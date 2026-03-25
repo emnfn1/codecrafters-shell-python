@@ -29,7 +29,7 @@ def main():
 
         if len(args) == 0:
             continue
-        if args[0] in BUILTINS:
+        if args[0] in builtin:
             BUILTINS[args[0]](args[1:])
         elif path := shutil.which(args[0]):
             output = subprocess.run(
