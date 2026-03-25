@@ -8,7 +8,7 @@ builtin = {
     "type": lambda args: custom_args(args),
     "exit": lambda args: sys.exit(0),
     "echo": lambda args: sys.stdout.write(f"{' '.join(args)}"),
-    "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}")
+    "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}"),
 }
 
 def custom_args(args):
