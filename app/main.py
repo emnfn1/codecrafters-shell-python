@@ -23,7 +23,6 @@ def custom_args(args):
 def main():
     while True:
         sys.stdout.write("$ ")
-        sys.stdout.flush()
         args = input()
         args = args.strip().split()
 
