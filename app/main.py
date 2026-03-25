@@ -19,7 +19,7 @@ def main():
             else:
                 path = shutil.which(user_input[1], mode = os.F_OK | os.X_OK):
                 if path:
-                    print(f"{user_input[1]} is path")
+                    print(f"{user_input[1]} is {path}")
                 else:
                     print(f"{user_input[1]}: not found")
         else:
