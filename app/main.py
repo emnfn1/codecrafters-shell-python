@@ -16,10 +16,12 @@ def main():
         elif user_input[0] == "type":
             if user_input[1] in ["echo", "type", "exit"]:
                 print(f"{user_input[1]} is shell builtin")
-            elif shutil.which(user_input[1], mode = os.F_OK | os.X_OK):
-                print(f"{user_input[1]} is {shutil.which(arg)}")
             else:
-                print(f"{user_input[1]}: not found")
+                path = shutil.which(user_input[1], mode = os.F_OK | os.X_OK):
+                if path:
+                    print(f"{user_input[1]} is path")
+                else:
+                    print(f"{user_input[1]}: not found")
         else:
             print(f"{user_input[0]}: command not found")
 
