@@ -1,6 +1,7 @@
 import sys
 import shutil
 import os
+import subprocess
 
 
 def main():
@@ -23,7 +24,11 @@ def main():
                 else:
                     print(f"{user_input[1]}: not found")
         else:
-            print(f"{user_input[0]}: command not found")
+            executable = shutil.which(user_input[0])
+            if executable == True:
+                subprocess.run([executable]) + user_input[1:]
+            else:
+                print(f"{user_input[0]}: command not found")
 
 
 
