@@ -1,5 +1,6 @@
 import sys
 import shutil
+import os
 
 
 def main():
@@ -14,7 +15,7 @@ def main():
             print(" ".join(user_input[1:]))
         elif user_input[0] == "type":
             if user_input[1] in ["echo", "type", "exit"]:
-                print(f"{user_input[1]} is a shell builtin")
+                print(f"{user_input[1]} is shell builtin")
             elif shutil.which(user_input[1], mode = os.F_OK | os.X_OK):
                 print(f"{user_input[1]} is {shutil.which(arg)}")
             else:
