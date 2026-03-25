@@ -13,7 +13,7 @@ builtin = {
 
 def custom_args(args):
     for arg in args:
-        path = shutil.which(user_input[1], mode=os.F_OK | os.X_OK)
+        path = shutil.which(arg, mode=os.F_OK | os.X_OK)
         if arg in builtin:
             sys.stdout.write(f"{arg} is a shell builtin\n")
         elif path:
