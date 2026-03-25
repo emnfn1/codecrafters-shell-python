@@ -7,7 +7,7 @@ import subprocess
 builtin = {
     "type": lambda args: custom_args(args),
     "exit": lambda args: sys.exit(0),
-    "echo": lambda args: sys.stdout.write(f"{' '.join(args)}"),
+    "echo": lambda args: sys.stdout.write(f"{' '.join(args)}\n"),
     "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}\n"),
 }
 
@@ -16,7 +16,7 @@ def custom_args(args):
         if arg in builtin:
             sys.stdout.write(f"{arg} is a shell builtin\n")
         elif path := shutil.which(arg):
-            sys.stdout.write(f"{arg} is {path}")
+            sys.stdout.write(f"{arg} is {path}\n")
         else:
             sys.stdout.write(f"{arg}: not found")
 
@@ -24,7 +24,8 @@ def main():
     while True:
         sys.stdout.write("$ ")
         sys.stdout.flush()
-        args = input.strip.split()
+        args = input()
+        args = args.strip().split()
 
         if len(args) == 0:
             continue
@@ -32,13 +33,15 @@ def main():
             builtin[args[0]](args[1:])
         elif path := shutil.which(args[0]):
             output = subprocess.run(
-                args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                [path] + args[1:],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
             )
             sys.stdout.write(output.stdout.decode())
             if output.stderr:
                 sys.stderr.write(output.stderr.decode())
         else:
-            sys.stdout.write(f"{args[0]}: command not found")
+            sys.stdout.write(f"{args[0]}: command not found\n")
 
 
 
