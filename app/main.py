@@ -23,12 +23,13 @@ def custom_args(args):
 def main():
     while True:
         sys.stdout.write("$ ")
+        sys.stdout.flush()
         args = input.strip.split()
 
         if len(args) == 0:
             continue
         if args[0] in builtin:
-            BUILTINS[args[0]](args[1:])
+            builtin[args[0]](args[1:])
         elif path := shutil.which(args[0]):
             output = subprocess.run(
                 args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
