@@ -9,7 +9,8 @@ def main():
             break
         elif command.startswith("echo "):
             print(command[5:])
-        else print(f"{command}: command not found")
+        else:
+            print(f"{command}: command not found")
 
 
 
