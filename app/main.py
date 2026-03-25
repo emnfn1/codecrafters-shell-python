@@ -4,33 +4,42 @@ import os
 import subprocess
 
 
+builtin = {
+    "type": lambda args: custom_args(args),
+    "exit": lambda args: sys.exit(0),
+    "echo": lambda args: sys.stdout.write(f"{' '.join(args)}"),
+    "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}")
+}
+
+def custom_args(args):
+    for arg in args:
+        path = shutil.which(user_input[1], mode=os.F_OK | os.X_OK)
+        if arg in builtin:
+            sys.stdout.write(f"{arg} is a shell builtin")
+        elif path:
+            sys.stdout.write(f"{arg} is {path}")
+        else:
+            sys.stdout.write(f"{arg}: not found")
+
 def main():
     while True:
         sys.stdout.write("$ ")
         user_input = input()
-        user_input = user_input.split()
+        args = input.strip.split()
 
-        if user_input[0] == "exit":
-            break
-        elif user_input[0] == "echo":
-            print(" ".join(user_input[1:]))
-        elif user_input[0] == "type":
-            if user_input[1] in ["echo", "type", "exit", "pwd"]:
-                print(f"{user_input[1]} is a shell builtin")
-            else:
-                path = shutil.which(user_input[1], mode = os.F_OK | os.X_OK)
-                if path:
-                    print(f"{user_input[1]} is {path}")
-                else:
-                    print(f"{user_input[1]}: not found")
-        elif user_input[0] == "pwd":
-            return os.getcwd()
+        if len(args) == 0:
+            continue
+        if args[0] in BUILTINS:
+            BUILTINS[args[0]](args[1:])
+        elif path := shutil.which(args[0]):
+            output = subprocess.run(
+                args, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            sys.stdout.write(output.stdout.decode())
+            if output.stderr:
+                sys.stderr.write(output.stderr.decode())
         else:
-            executable = shutil.which(user_input[0])
-            if executable:
-                subprocess.run(user_input, executable = executable)
-            else:
-                print(f"{user_input[0]}: command not found")
+            sys.stdout.write(f"{args[0]}: command not found")
 
 
 
