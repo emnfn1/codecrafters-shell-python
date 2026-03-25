@@ -18,11 +18,12 @@ def custom_args(args):
         elif path := shutil.which(arg, mode=os.F_OK | os.X_OK):
             sys.stdout.write(f"{arg} is {path}\n")
         else:
-            sys.stdout.write(f"{arg}: not found")
+            sys.stdout.write(f"{arg}: not found\n")
 
 def main():
     while True:
         sys.stdout.write("$ ")
+        sys.stdout.flush()
         args = input()
         args = args.strip().split()
 
