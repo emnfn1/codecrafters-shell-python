@@ -23,7 +23,6 @@ def custom_args(args):
 def main():
     while True:
         sys.stdout.write("$ ")
-        user_input = input()
         args = input.strip.split()
 
         if len(args) == 0:
