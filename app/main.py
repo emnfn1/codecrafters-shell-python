@@ -12,7 +12,7 @@ def main():
         elif user_input[0] == "echo ":
             print(command[5:])
         elif user_input[0] == "type":
-            if "type" or "exit" or "echo" == user_input[1]:
+            if user_input[1] in ["echo", "type", "exit"]:
                 print(f"{user_input[1]} is a shell builtin")
             else:
                 print(f"{user_input[1]}: not found")
