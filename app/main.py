@@ -23,6 +23,8 @@ def main():
                     print(f"{user_input[1]} is {path}")
                 else:
                     print(f"{user_input[1]}: not found")
+        elif user_input[0] == "pwd":
+            return os.getcwd()
         else:
             executable = shutil.which(user_input[0])
             if executable:
