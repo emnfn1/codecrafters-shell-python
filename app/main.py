@@ -9,8 +9,8 @@ def main():
 
         if user_input[0] == "exit":
             break
-        elif user_input[0] == "echo ":
-            print(command[5:])
+        elif user_input[0] == "echo":
+            print(" ".join(user_input[1:]))
         elif user_input[0] == "type":
             if user_input[1] in ["echo", "type", "exit"]:
                 print(f"{user_input[1]} is a shell builtin")
