@@ -31,9 +31,9 @@ def main():
             continue
         if args[0] in builtin:
             builtin[args[0]](args[1:])
-        elif path := shutil.which(args[0]):
+        elif shutil.which(args[0]):
             output = subprocess.run(
-                [path] + args[1:],
+                [args[0]] + args[1:],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
