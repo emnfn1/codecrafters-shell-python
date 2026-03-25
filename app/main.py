@@ -17,7 +17,7 @@ def main():
             if user_input[1] in ["echo", "type", "exit"]:
                 print(f"{user_input[1]} is shell builtin")
             else:
-                path = shutil.which(user_input[1], mode = os.F_OK | os.X_OK):
+                path = shutil.which(user_input[1], mode = os.F_OK | os.X_OK)
                 if path:
                     print(f"{user_input[1]} is {path}")
                 else:
