@@ -47,7 +47,7 @@ def split_stdout_redirection(tokens):
     else:
         return tokens, None
 
-    pos = tokens.index(">")
+    pos = tokens.index(op)
     if pos == len(tokens) - 1:
         sys.stderr.write(f"syntax error: missing filename after {op}\n")
         return None, None
