@@ -12,7 +12,7 @@ builtin = {
     "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}\n"),
     "cd": def cd_function(args):
         if not os.path.abs(args[0]):
-            return
+            continue
         elif not os.path.isdir(arg[0]):
             sys.sys.stderr.write(f"cd: {args[0]}: No such file or directory\n")
         else:
