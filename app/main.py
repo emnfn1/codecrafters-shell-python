@@ -28,7 +28,7 @@ def custom_args(args):
     for arg in args:
         if arg in builtin:
             sys.stdout.write(f"{arg} is a shell builtin\n")
-        elif path := shutil.which(arg, mode=os.F_OK | os.X_OK):
+        elif path := shutil.which(arg):
             sys.stdout.write(f"{arg} is {path}\n")
         else:
             sys.stdout.write(f"{arg}: not found\n")
@@ -45,10 +45,11 @@ def main():
         if args[0] in builtin:
             builtin[args[0]](args[1:])
         elif shutil.which(args[0]):
-            output = subprocess.run(
+            output = subprocess.Popen(
                 [args[0]] + args[1:],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.STDOUT,
+                universal_newlines=True
             )
             sys.stdout.write(output.stdout.decode())
             if output.stderr:
