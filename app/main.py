@@ -10,7 +10,7 @@ builtin = {
     "exit": lambda args: sys.exit(0),
     "echo": lambda args: sys.stdout.write(f"{' '.join(args)}\n"),
     "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}\n"),
-    "cd": def cd_function():
+    "cd": def cd_function(args):
         if not os.path.abs(args[0]):
             return
         elif not os.path.isdir(arg[0]):
