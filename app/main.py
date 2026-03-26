@@ -2,10 +2,12 @@ import sys, shutil, os, subprocess, shlex, readline
 
 def get_path_executables():
     exes = set()
-
     path_env = os.environ.get("PATH", "")
-    pathext = os.environ.get("PATHEXT", ".EXE;.BAT;.CMD;.COM")
-    exts = {e.lower() for e in pathext.split(";") if e}
+
+    pathext = os.environ.get("PATHEXT")
+    exts = None
+    if pathext:
+        exts = {e.lower() for e in pathext.split(";") if e}
 
     for folder in path_env.split(os.pathsep):
         if not folder:
@@ -16,9 +18,13 @@ def get_path_executables():
                 if not os.path.isfile(full):
                     continue
 
-                root, ext = os.path.splitext(entry)
-                if ext.lower() in exts:
-                    exes.add(root)
+                if exts is not None:
+                    root, ext = os.path.splitext(entry)
+                        if ext.lower() in exts:
+                            exes.add(root)
+                else:
+                    if os.access(full, os.X_OK):
+                        exes.add(entry)
         except OSError:
             continue
     return exes
