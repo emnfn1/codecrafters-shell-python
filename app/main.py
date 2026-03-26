@@ -10,9 +10,13 @@ builtin = {
     "exit": lambda args: sys.exit(0),
     "echo": lambda args: sys.stdout.write(f"{' '.join(args)}\n"),
     "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}\n"),
-    "cd": lambda args: sys.stderr.write(f"cd: {args[0]}: No such file or directory")
-    if not os.path.exists(args[0])
-    else os.chidir(args[0]),
+    "cd": def cd_function():
+        if not os.path.abs(args[0]):
+            return
+        elif not os.path.isdir(arg[0]):
+            sys.sys.stderr.write(f"cd: {args[0]}: No such file or directory\n")
+        else:
+            os.os.chdir(args[0]),
         
     }
 
@@ -46,7 +50,7 @@ def main():
             if output.stderr:
                 sys.stderr.write(output.stderr.decode())
         else:
-            sys.stdout.write(f"{args[0]}: command not found\n")
+            sys.stderr.write(f"{args[0]}: command not found\n")
 
 
 
