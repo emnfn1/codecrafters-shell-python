@@ -20,8 +20,8 @@ def get_path_executables():
 
                 if exts is not None:
                     root, ext = os.path.splitext(entry)
-                        if ext.lower() in exts:
-                            exes.add(root)
+                    if ext.lower() in exts:
+                        exes.add(root)
                 else:
                     if os.access(full, os.X_OK):
                         exes.add(entry)
