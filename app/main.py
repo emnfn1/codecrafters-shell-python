@@ -1,3 +1,4 @@
+from fileinput import filename
 from genericpath import exists
 import sys
 import shutil
@@ -20,6 +21,21 @@ def cd_function(user_inputs):
 
     os.chdir(target)
 
+def echo_function(user_inputs):
+    if ">" in user_inputs:
+        pos = user_inputs.index(">")
+        if pos == len(user_inputs) - 1:
+            sys.stderr.write("echo: missing file after >\n")
+            return
+
+        text = " ".join(user_inputs[:pos]) + "\n"
+        filename = user_inputs[pos + 1]
+
+        with open(filename, "w", encoding = "utf-8") as f:
+            f.write(text)
+    else:
+        sys.stdout.write(" ".join(user_inputs) + "\n")
+
 def custom_user_inputs(user_inputs):
     for user_input in user_inputs:
         if user_input in builtin_functions:
@@ -32,7 +48,7 @@ def custom_user_inputs(user_inputs):
 builtin_functions = {
     "type": lambda user_inputs: custom_user_inputs(user_inputs),
     "exit": lambda user_inputs: sys.exit(0),
-    "echo": lambda user_inputs: sys.stdout.write(f"{' '.join(user_inputs)}\n"),
+    "echo": echo_function,
     "pwd": lambda user_inputs: sys.stdout.write(f"{os.getcwd()}\n"),
     "cd": cd_function,
 }
@@ -70,7 +86,7 @@ def run_cli():
 
             result = subprocess.run(
                 [cmd] + args,
-                stdout=subprocess.PIPE,
+                stdout=sys.stdout_target,
                 stderr=subprocess.PIPE,
                 text = True,
                 errors="replace",
