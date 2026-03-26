@@ -21,20 +21,6 @@ def cd_function(user_inputs):
 
     os.chdir(target)
 
-def echo_function(user_inputs):
-    if ">" in user_inputs:
-        pos = user_inputs.index(">")
-        if pos == len(user_inputs) - 1:
-            sys.stderr.write("echo: missing file after >\n")
-            return
-
-        text = " ".join(user_inputs[:pos]) + "\n"
-        filename = user_inputs[pos + 1]
-
-        with open(filename, "w", encoding = "utf-8") as f:
-            f.write(text)
-    else:
-        sys.stdout.write(" ".join(user_inputs) + "\n")
 
 def custom_user_inputs(user_inputs):
     for user_input in user_inputs:
@@ -48,11 +34,23 @@ def custom_user_inputs(user_inputs):
 builtin_functions = {
     "type": lambda user_inputs: custom_user_inputs(user_inputs),
     "exit": lambda user_inputs: sys.exit(0),
-    "echo": echo_function,
+    "echo": lambda args: sys.stdout.write(" ".join(args) + "\n"),
     "pwd": lambda user_inputs: sys.stdout.write(f"{os.getcwd()}\n"),
     "cd": cd_function,
 }
 
+def split_stdout_redirection(tokens):
+    if ">" not in tokens:
+        return tokens, None
+
+    pos = tokens.index(">")
+    if pos == len(tokens) - 1:
+        sys.stderr.write("syntax error: missing filename after >\n")
+        return None, None
+
+    cleaned = tokens[:pos]
+    out_file = tokens[pos + 1]
+    return cleaned, out_file
 
 def run_cli():
     while True:
@@ -68,6 +66,9 @@ def run_cli():
                 sys.stderr.write(f"parse error: {e}\n")
                 continue
 
+            user_inputs, out_file = split_stdout_redirection(user_inputs)
+            if user_inputs is None:
+                continue
             if len(user_inputs) == 0:
                 continue
             
@@ -75,7 +76,17 @@ def run_cli():
             args = user_inputs[1:]
 
             if cmd in builtin_functions:
-                builtin_functions[cmd](args)
+                if out_file:
+                    with open(out_file, "w", encoding="utf-8") as f:
+                        old_stdout = sys.stdout
+                        sys.stdout = f
+                        try:
+                            builtin_functions[cmd](args)
+                        finally:
+                            sys.stdout = old_stdout
+
+                else:
+                    builtin_functions[cmd](args)
                 continue
 
 
@@ -83,14 +94,24 @@ def run_cli():
             if not path:
                 sys.stderr.write(f"{cmd}: command not found\n")
                 continue
-
-            result = subprocess.run(
-                [cmd] + args,
-                stdout=sys.stdout_target,
-                stderr=subprocess.PIPE,
-                text = True,
-                errors="replace",
-            )
+            
+            if out_file:
+                with open(out_file, "w", encoding="utf-8") as f:
+                    result = subprocess.run(
+                        [cmd] + args,
+                        stdout=f,
+                        stderr=subprocess.PIPE,
+                        text = True,
+                        errors="replace",
+                    )
+            else:
+                result = result = subprocess.run(
+                    [cmd] + args,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text = True,
+                    errors="replace",
+                )
 
             if result.stdout:
                 sys.stdout.write(result.stdout)
