@@ -57,10 +57,12 @@ def split_stdout_redirection(tokens):
 def split_stderr_redirection(tokens):
     if "2>" in tokens:
         op = "2>"
+    elif "2>>" in tokens:
+        op = "2>>"
     else:
         return tokens, None
 
-    pos = tokens_index(op)
+    pos = tokens.index(op)
     if pos == len(tokens) - 1:
         sys.stderr.write(f"syntax error: missing filename after {op}\n")
         return None, None
@@ -84,7 +86,7 @@ def run_cli():
                 continue
 
             user_inputs, out_file = split_stdout_redirection(user_inputs)
-            user_inputs, err_file = split_stderr_redirection(user_inputs
+            user_inputs, err_file = split_stderr_redirection(user_inputs)
             if user_inputs is None:
                 continue
             if len(user_inputs) == 0:
