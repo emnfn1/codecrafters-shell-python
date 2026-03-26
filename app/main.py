@@ -48,6 +48,8 @@ def builtin_completion(text, state):
     return None
 
 readline.set_completer(builtin_completion)
+readline.set_completer_delims(" \t\n")
+readline.set_completion_append_character(" ")
 readline.parse_and_bind("tab: complete")
 
 def split_stdout_redirection(tokens):
