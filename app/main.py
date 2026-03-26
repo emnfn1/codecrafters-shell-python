@@ -66,7 +66,7 @@ def command_completion(text, state):
         return None
 
     builtin_matches = [name for name in builtin_functions if name.startswith(text)]
-    exe_matches = [name for name in get_path_executables if name.startswith(text)]
+    exe_matches = [name for name in PATH_EXES if name.startswith(text)]
 
     matches = sorted(set(builtin_matches + exe_matches))
 
