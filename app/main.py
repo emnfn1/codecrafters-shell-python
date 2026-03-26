@@ -40,7 +40,11 @@ builtin_functions = {
 }
 
 def split_stdout_redirection(tokens):
-    if ">" not in tokens:
+    if ">"  in tokens:
+        op = ">"
+    elif "1>" in tokens:
+        op = "1>"
+    else:
         return tokens, None
 
     pos = tokens.index(">")
