@@ -94,17 +94,31 @@ def run_cli():
             args = user_inputs[1:]
 
             if cmd in builtin_functions:
-                if out_file:
-                    with open(out_file, "w", encoding="utf-8") as f:
-                        old_stdout = sys.stdout
-                        sys.stdout = f
-                        try:
-                            builtin_functions[cmd](args)
-                        finally:
-                            sys.stdout = old_stdout
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
 
-                else:
+                out_f = None
+                err_f = None
+
+                try:
+                    if out_file:
+                        out_f = open(out_file, "w", encoding="utf-8")
+                        sys.stdout = out_f
+
+                    if err_file:
+                        err_f = open(err_file, "w", encoding ="utf-8")
+                        sys.stderr = err_f
+
                     builtin_functions[cmd](args)
+
+                finally:
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    if out_f:
+                        out_f.close()
+                    if err_f:
+                        err_f.close()
+
                 continue
 
 
