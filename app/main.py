@@ -43,12 +43,12 @@ def builtin_completion(text, state):
     matches.sort()
 
     if state < len(matches):
-        return matches(state)
+        return matches[state]
 
     return None
 
 readline.set_completer(builtin_completion)
-readline.parse_and_bind("TAB: complete")
+readline.parse_and_bind("tab: complete")
 
 def split_stdout_redirection(tokens):
     if ">"  in tokens:
