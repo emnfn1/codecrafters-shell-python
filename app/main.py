@@ -39,6 +39,8 @@ def main():
         sys.stdout.flush()
         args = input()
         args = shlex.split(args)
+        if ">" in args or "1>" in args:
+            os.system(args)
 
         if len(args) == 0:
             continue
