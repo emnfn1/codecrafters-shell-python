@@ -39,17 +39,17 @@ def builtin_completion(text, state):
     if " " in buffer.lstrip():
         return None
 
-    matches = [name for name in builtin_functions.keys() if name.startswith(text)]
-    matches.sort()
+    matches = sorted([name for name in builtin_functions if name.startswith(text)])
+
+    if len(matches) == 1:
+        matches = [matches[0] + " "]
 
     if state < len(matches):
         return matches[state]
-
     return None
 
 readline.set_completer(builtin_completion)
 readline.set_completer_delims(" \t\n")
-readline.set_completion_append_character(" ")
 readline.parse_and_bind("tab: complete")
 
 def split_stdout_redirection(tokens):
