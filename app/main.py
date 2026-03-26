@@ -48,8 +48,7 @@ def main():
             output = subprocess.Popen(
                 [args[0]] + args[1:],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True
+                stderr=subprocess.PIPE,
             )
             sys.stdout.write(output.stdout.decode())
             if output.stderr:
