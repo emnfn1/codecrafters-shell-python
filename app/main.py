@@ -84,9 +84,13 @@ def run_cli():
                 continue
 
             user_inputs, out_file = split_stdout_redirection(user_inputs)
+            if user_inputs is None:
+                continue
+
             user_inputs, err_file = split_stderr_redirection(user_inputs)
             if user_inputs is None:
                 continue
+
             if len(user_inputs) == 0:
                 continue
             
@@ -127,23 +131,35 @@ def run_cli():
                 sys.stderr.write(f"{cmd}: command not found\n")
                 continue
             
-            if out_file:
-                with open(out_file, "w", encoding="utf-8") as f:
-                    result = subprocess.run(
-                        [cmd] + args,
-                        stdout=f,
-                        stderr=subprocess.PIPE,
-                        text = True,
-                        errors="replace",
-                    )
-            else:
-                result = result = subprocess.run(
+
+            out_handle = None
+            err_handle = None
+
+            try:
+                stdout_target = subprocess.PIPE
+                stderr_target = subprocess.PIPE
+
+                if out_file:
+                    out_handle = open(out_file, "w", encoding="utf-8")
+                    stdout_target = out_handle
+
+                if err_file:
+                    err_handle = open(err_file, "w", encoding="utf-8")
+                    stderr_target = err_handle
+
+                result = subprocess.run(
                     [cmd] + args,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text = True,
-                    errors="replace",
+                    stdout=stdout_target,
+                    stderr=stderr_target,
+                    text=True,
+                    errors="replace"
                 )
+
+            finally:
+                if out_handle:
+                    out_handle.close()
+                if err_handle:
+                    err_handle.close()
 
             if result.stdout:
                 sys.stdout.write(result.stdout)
