@@ -49,7 +49,7 @@ def split_stdout_redirection(tokens):
 
     pos = tokens.index(">")
     if pos == len(tokens) - 1:
-        sys.stderr.write("syntax error: missing filename after >\n")
+        sys.stderr.write(f"syntax error: missing filename after {op}\n")
         return None, None
 
     cleaned = tokens[:pos]
