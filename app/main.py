@@ -3,6 +3,7 @@ import sys
 import shutil
 import os
 import subprocess
+import shlex
 
 def cd_function(args):
     if not args:
@@ -37,7 +38,7 @@ def main():
         sys.stdout.write("$ ")
         sys.stdout.flush()
         args = input()
-        args = args.strip().split()
+        args = args.shlex().split()
 
         if len(args) == 0:
             continue
