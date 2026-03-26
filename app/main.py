@@ -1,5 +1,3 @@
-from fileinput import filename
-from genericpath import exists
 import sys
 import shutil
 import os
@@ -56,6 +54,21 @@ def split_stdout_redirection(tokens):
     out_file = tokens[pos + 1]
     return cleaned, out_file
 
+def split_stderr_redirection(tokens):
+    if "2>" in tokens:
+        op = "2>"
+    else:
+        return tokens, None
+
+    pos = tokens_index(op)
+    if pos == len(tokens) - 1:
+        sys.stderr.write(f"syntax error: missing filename after {op}\n")
+        return None, None
+
+    cleaned = tokens[:pos]
+    err_file= tokens[pos +1]
+    return cleaned, err_file
+
 def run_cli():
     while True:
         try:
@@ -71,6 +84,7 @@ def run_cli():
                 continue
 
             user_inputs, out_file = split_stdout_redirection(user_inputs)
+            user_inputs, err_file = split_stderr_redirection(user_inputs
             if user_inputs is None:
                 continue
             if len(user_inputs) == 0:
