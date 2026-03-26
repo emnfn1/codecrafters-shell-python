@@ -11,9 +11,9 @@ builtin = {
     "echo": lambda args: sys.stdout.write(f"{' '.join(args)}\n"),
     "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}\n"),
     "cd": lambda args: sys.stderr.write(f"cd: {args[0]}: No such file or directory")
-    if os.path.exists([0]):
+    if os.path.exists(args[0]):
         os.chidir(args[0])
-    else:
+    else ,
         
     }
 
