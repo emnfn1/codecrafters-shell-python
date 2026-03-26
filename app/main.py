@@ -6,7 +6,7 @@ import subprocess
 
 def cd_function(args):
     if args[0] == "~":
-        os.getenv('HOME')
+        os.chdir(os.getenv('HOME'))
     elif not os.path.isdir(args[0]):
         sys.stderr.write(f"cd: {args[0]}: No such file or directory\n")
     else:
