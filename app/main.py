@@ -4,20 +4,21 @@ import shutil
 import os
 import subprocess
 
+def cd_function(args):
+    if not os.path.isabs(args[0]):
+        return
+    elif not os.path.isdir(args[0]):
+        sys.stderr.write(f"cd: {args[0]}: No such file or directory\n")
+    else:
+        os.chdir(args[0])
 
 builtin = {
     "type": lambda args: custom_args(args),
     "exit": lambda args: sys.exit(0),
     "echo": lambda args: sys.stdout.write(f"{' '.join(args)}\n"),
     "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}\n"),
-    "cd": cd_function(args):
-        if not os.path.abs(args[0]):
-            continue
-        elif not os.path.isdir(arg[0]):
-            sys.sys.stderr.write(f"cd: {args[0]}: No such file or directory\n")
-        else:
-            os.os.chdir(args[0]),
-        
+    "cd": cd_function,
+     
     }
 
 def custom_args(args):
