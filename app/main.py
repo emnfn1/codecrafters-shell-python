@@ -38,7 +38,7 @@ def main():
         sys.stdout.write("$ ")
         sys.stdout.flush()
         args = input()
-        args = args.shlex().split()
+        args = shlex.split(args)
 
         if len(args) == 0:
             continue
