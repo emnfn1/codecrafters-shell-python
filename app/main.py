@@ -57,8 +57,6 @@ def split_stdout_redirection(tokens):
 def split_stderr_redirection(tokens):
     if "2>" in tokens:
         op = "2>"
-    elif "2>>" in tokens:
-        op = "2>>"
     else:
         return tokens, None
 
