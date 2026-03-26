@@ -40,34 +40,45 @@ builtin_functions = {
 def split_stdout_redirection(tokens):
     if ">"  in tokens:
         op = ">"
+        mode = "w"
     elif "1>" in tokens:
         op = "1>"
+        mode = "w"
+    elif ">>" in tokens:
+        op = ">>"
+        mode = "a"
+    elif "1>>" in tokens:
+        op = "1>>"
+        mode = "a"
     else:
-        return tokens, None
+        return tokens, None, None
 
     pos = tokens.index(op)
     if pos == len(tokens) - 1:
         sys.stderr.write(f"syntax error: missing filename after {op}\n")
-        return None, None
+        return None, None, None
 
     cleaned = tokens[:pos]
     out_file = tokens[pos + 1]
-    return cleaned, out_file
+    return cleaned, out_file, mode
 
 def split_stderr_redirection(tokens):
     if "2>" in tokens:
         op = "2>"
+    elif "2>>" in tokens:
+        op = "2>>"
+        mode = "a"
     else:
-        return tokens, None
+        return tokens, None, None
 
     pos = tokens.index(op)
     if pos == len(tokens) - 1:
         sys.stderr.write(f"syntax error: missing filename after {op}\n")
-        return None, None
+        return None, None, None
 
     cleaned = tokens[:pos]
     err_file= tokens[pos +1]
-    return cleaned, err_file
+    return cleaned, err_file, mode
 
 def run_cli():
     while True:
@@ -83,11 +94,11 @@ def run_cli():
                 sys.stderr.write(f"parse error: {e}\n")
                 continue
 
-            user_inputs, out_file = split_stdout_redirection(user_inputs)
+            user_inputs, out_file, out_mode = split_stdout_redirection(user_inputs)
             if user_inputs is None:
                 continue
 
-            user_inputs, err_file = split_stderr_redirection(user_inputs)
+            user_inputs, err_file, err_mode = split_stderr_redirection(user_inputs)
             if user_inputs is None:
                 continue
 
@@ -106,11 +117,11 @@ def run_cli():
 
                 try:
                     if out_file:
-                        out_f = open(out_file, "w", encoding="utf-8")
+                        out_f = open(out_file, out_mode, encoding="utf-8")
                         sys.stdout = out_f
 
                     if err_file:
-                        err_f = open(err_file, "w", encoding ="utf-8")
+                        err_f = open(err_file, err_mode, encoding ="utf-8")
                         sys.stderr = err_f
 
                     builtin_functions[cmd](args)
@@ -140,11 +151,11 @@ def run_cli():
                 stderr_target = subprocess.PIPE
 
                 if out_file:
-                    out_handle = open(out_file, "w", encoding="utf-8")
+                    out_handle = open(out_file, out_mode, encoding="utf-8")
                     stdout_target = out_handle
 
                 if err_file:
-                    err_handle = open(err_file, "w", encoding="utf-8")
+                    err_handle = open(err_file, err_mode, encoding="utf-8")
                     stderr_target = err_handle
 
                 result = subprocess.run(
