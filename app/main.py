@@ -16,7 +16,7 @@ def get_path_executables():
                 if not os.path.isfile(full):
                     continue
 
-                root, ext = os.path.splitext(entry):
+                root, ext = os.path.splitext(entry)
                 if ext.lower() in exts:
                     exes.add(root)
         except OSError:
