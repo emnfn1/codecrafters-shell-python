@@ -1,8 +1,4 @@
-import sys
-import shutil
-import os
-import subprocess
-import shlex
+import sys, shutil, os, subprocess, shlex, readline
 
 def cd_function(user_inputs):
     if not user_inputs:
@@ -36,6 +32,23 @@ builtin_functions = {
     "pwd": lambda user_inputs: sys.stdout.write(f"{os.getcwd()}\n"),
     "cd": cd_function,
 }
+
+def builtin_completion(text, state):
+    buffer = readline.get_line_buffer()
+
+    if " " in buffer.lstrip():
+        return None
+
+    matches = [name for name in builtin_functions.keys() if name.startswith(text)]
+    matches.sort()
+
+    if state < len(matches):
+        return matches(state)
+
+    return None
+
+readline.set_completer(builtin_completion)
+readline.parse_and_bind("TAB: complete")
 
 def split_stdout_redirection(tokens):
     if ">"  in tokens:
@@ -84,10 +97,7 @@ def split_stderr_redirection(tokens):
 def run_cli():
     while True:
         try:
-            sys.stdout.write("$ ")
-            sys.stdout.flush()
-
-            user_inputs = sys.stdin.readline()
+            user_inputs = input("$ ")
             
             try:
                 user_inputs = shlex.split(user_inputs)
