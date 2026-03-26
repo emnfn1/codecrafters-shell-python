@@ -1,5 +1,31 @@
 import sys, shutil, os, subprocess, shlex, readline
 
+def get_path_executables():
+    exes = set()
+
+    path_env = os.environ.get("PATH", "")
+    pathext = os.environ.get("PATHEXT", ".EXE;.BAT;.CMD;.COM")
+    exts = {e.lower() for e in pathext.split(";") if e}
+
+    for folder in path_env.split(os.pathsep):
+        if not folder:
+            continue
+        try:
+            for entry in os.listdir(folder):
+                full = os.path.join(folder, entry)
+                if not os.path.isfile(full):
+                    continue
+
+                root, ext = os.path.splitext(entry):
+                if ext.lower() in exts:
+                    exes.add(root)
+        except OSError:
+            continue
+    return exes
+
+PATH_EXES = get_path_executables()
+                    
+
 def cd_function(user_inputs):
     if not user_inputs:
         os.chdir(os.path.expanduser("~"))
@@ -33,13 +59,16 @@ builtin_functions = {
     "cd": cd_function,
 }
 
-def builtin_completion(text, state):
+def command_completion(text, state):
     buffer = readline.get_line_buffer()
 
     if " " in buffer.lstrip():
         return None
 
-    matches = sorted([name for name in builtin_functions if name.startswith(text)])
+    builtin_matches = [name for name in builtin_functions if name.startswith(text)]
+    exe_matches = [name for name in get_path_executables if name.startwith(text)]
+
+    matches = sorted(set(builtin_matches + exe_matches))
 
     if len(matches) == 1:
         matches = [matches[0] + " "]
@@ -48,7 +77,7 @@ def builtin_completion(text, state):
         return matches[state]
     return None
 
-readline.set_completer(builtin_completion)
+readline.set_completer(command_completion)
 readline.set_completer_delims(" \t\n")
 readline.parse_and_bind("tab: complete")
 
