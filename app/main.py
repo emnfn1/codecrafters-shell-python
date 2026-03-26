@@ -5,60 +5,90 @@ import os
 import subprocess
 import shlex
 
-def cd_function(args):
-    if not args:
+def cd_function(user_inputs):
+    if not user_inputs:
+        os.chdir(os.path.expanduser("~"))
         return
-    elif args[0] == "~":
-        os.chdir(os.getenv('HOME'))
-    elif not os.path.isdir(args[0]):
-        sys.stderr.write(f"cd: {args[0]}: No such file or directory\n")
-    else:
-        os.chdir(args[0])
 
-builtin = {
-    "type": lambda args: custom_args(args),
-    "exit": lambda args: sys.exit(0),
-    "echo": lambda args: sys.stdout.write(f"{' '.join(args)}\n"),
-    "pwd": lambda args: sys.stdout.write(f"{os.getcwd()}\n"),
-    "cd": cd_function,
-     
-    }
+    target = user_inputs[0]
 
-def custom_args(args):
-    for arg in args:
-        if arg in builtin:
-            sys.stdout.write(f"{arg} is a shell builtin\n")
-        elif path := shutil.which(arg):
-            sys.stdout.write(f"{arg} is {path}\n")
+    target = os.path.expanduser(target)
+
+    if not os.path.isdir(target):
+        sys.stderr.write(f"cd: {target}: No such file or directory\n")
+        return
+
+    os.chdir(target)
+
+def custom_user_inputs(user_inputs):
+    for user_input in user_inputs:
+        if user_input in builtin_functions:
+            sys.stdout.write(f"{user_input} is a shell builtin\n")
+        elif path := shutil.which(user_input):
+            sys.stdout.write(f"{user_input} is {path}\n")
         else:
-            sys.stdout.write(f"{arg}: not found\n")
+            sys.stdout.write(f"{user_input}: not found\n")
 
-def main():
+builtin_functions = {
+    "type": lambda user_inputs: custom_user_inputs(user_inputs),
+    "exit": lambda user_inputs: sys.exit(0),
+    "echo": lambda user_inputs: sys.stdout.write(f"{' '.join(user_inputs)}\n"),
+    "pwd": lambda user_inputs: sys.stdout.write(f"{os.getcwd()}\n"),
+    "cd": cd_function,
+}
+
+
+def run_cli():
     while True:
-        sys.stdout.write("$ ")
-        sys.stdout.flush()
-        args = input()
-        args = shlex.split(args)
-        if ">" in args or "1>" in args:
-            os.system(args)
+        try:
+            sys.stdout.write("$ ")
+            sys.stdout.flush()
 
-        if len(args) == 0:
-            continue
-        if args[0] in builtin:
-            builtin[args[0]](args[1:])
-        elif shutil.which(args[0]):
-            output = subprocess.run(
-                [args[0]] + args[1:],
+            user_inputs = sys.stdin.readline()
+            
+            try:
+                user_inputs = shlex.split(user_inputs)
+            except ValueError as e:
+                sys.stderr.write(f"parse error: {e}\n")
+                continue
+
+            if len(user_inputs) == 0:
+                continue
+            
+            cmd = user_inputs[0]
+            args = user_inputs[1:]
+
+            if cmd in builtin_functions:
+                builtin_functions[cmd](args)
+                continue
+
+
+            path = shutil.which(cmd)
+            if not path:
+                sys.stderr.write(f"{cmd}: command not found\n")
+                continue
+
+            result = subprocess.run(
+                [cmd] + args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
+                text = True,
+                errors="replace",
             )
-            sys.stdout.write(output.stdout.decode())
-            if output.stderr:
-                sys.stderr.write(output.stderr.decode())
-        else:
-            sys.stderr.write(f"{args[0]}: command not found\n")
+
+            if result.stdout:
+                sys.stdout.write(result.stdout)
+            if result.stderr:
+                sys.stderr.write(result.stderr)
+
+        except EOFError:
+            sys.stdout.write("\n")
+            break
+        except KeyboardInterrupt:
+            sys.stdout.write("\n")
+            continue
 
 
 
 if __name__ == "__main__":
-    main()
+    run_cli()
