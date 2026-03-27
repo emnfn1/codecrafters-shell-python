@@ -88,39 +88,52 @@ def _listdir_safe(folder):
 
 def _complete_path(prefix, only_dirs=False):
     """
-    File + directory completion, supports:
-    - nested paths: src/uti<Tab>
-    - ~ expansion: ~/Do<Tab>
-    - returns dirs with trailing slash
+    Robust file/dir completion:
+    - nested paths work: ant/<TAB> then ant/p<TAB>
+    - no duplicated segments like ant/ant/
+    - preserves ~ if the user typed it
+    - returns dirs with trailing os.sep
     """
-    if prefix == "":
+    if prefix is None:
         prefix = ""
 
+    used_tilde = prefix.startswith("~")
     expanded = os.path.expanduser(prefix)
-    scan_dir, base = os.path.split(expanded)
 
+    scan_dir, base = os.path.split(expanded)
     if scan_dir == "":
         scan_dir = "."
+
     entries = _listdir_safe(scan_dir)
 
     out = []
     for e in entries:
         if not e.startswith(base):
             continue
+
         full = os.path.join(scan_dir, e)
         is_dir = os.path.isdir(full)
-
         if only_dirs and not is_dir:
             continue
 
-        typed_dir, _ = os.path.split(prefix)
-        if typed_dir == "":
-            candidate = e
+        candidate_expanded = os.path.join(scan_dir, e)
+
+        if used_tilde:
+            home = os.path.expanduser("~")
+            if os.path.commonpath([home, os.path.abspath(candidate_expanded)]) == os.path.abspath(home):
+                candidate = "~" + candidate_expanded[len(home):]
+            else:
+                candidate = candidate_expanded
         else:
-            candidate = typed_dir.rstrip("/\\") + os.sep + e
+            candidate = candidate_expanded
+
+        if not prefix.startswith((".", os.sep, "~")) and os.path.dirname(prefix) == "":
+            if candidate.startswith("." + os.sep):
+                candidate = candidate[2:]
 
         if is_dir:
             candidate += os.sep
+
         out.append(candidate)
 
     out.sort()
