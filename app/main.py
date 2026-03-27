@@ -65,6 +65,17 @@ builtin_functions = {
     "cd": cd_function,
 }
 
+def get_cwd_executables():
+    exes = set()
+    try:
+        for entry in os.listdir("."):
+            full = os.path.join(".", entry)
+            if os.path.isfile(full) and os.access(full, os.X_OK):
+                exes.add(entry)
+    except OSError:
+        pass
+    return exes
+
 def command_completion(text, state):
     if state != 0:
         return None
@@ -72,7 +83,7 @@ def command_completion(text, state):
     buf = readline.get_line_buffer()
 
     if " " in buf:
-        t = text 
+        t = text
         if "/" in t:
             dirpart, prefix = t.rsplit("/", 1)
             search_dir = os.path.expanduser(os.path.expandvars(dirpart or ".")) + "/"
@@ -94,7 +105,9 @@ def command_completion(text, state):
 
     builtin_matches = [n for n in builtin_functions if n.startswith(text)]
     exe_matches = [n for n in get_path_executables() if n.startswith(text)]
-    matches = sorted(set(builtin_matches + exe_matches))
+    cwd_matches = [n for n in get_cwd_executables() if n.startswith(text)]
+
+    matches = sorted(set(builtin_matches + exe_matches + cwd_matches))
     if len(matches) == 1:
         return matches[0] + " "
     return None
