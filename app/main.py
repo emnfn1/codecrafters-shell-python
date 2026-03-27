@@ -90,6 +90,8 @@ def command_completion(text, state):
         ]
         if text:
             matches = [m if m.startswith(text) else os.path.join(text, os.path.basename(m)) for m in matches]
+        if len(matches) == 1 and not matches[0].endswith("/"):
+            matches[0] += " "
     if state < len(matches):
         return matches[state]
     return None
