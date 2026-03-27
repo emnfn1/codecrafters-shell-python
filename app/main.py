@@ -68,7 +68,7 @@ builtin_functions = {
 def format_path_match(m):
     if os.path.isdir(m):
         return m.rstrip("/\\") + "/"
-    return m + " "
+    return m
 
 def command_completion(text, state):
     buffer = readline.get_line_buffer()
@@ -87,13 +87,10 @@ def command_completion(text, state):
         if len(matches) == 1:
             matches = [matches[0] + " "]
     else:
-        if text == "":
-            expanded = "."
-        else:
-            expanded = os.path.expanduser(os.path.expandvars(text))
+        expanded = os.path.expanduser(os.path.expandvars(text)) if text else "."
         raw = sorted(glob.glob(expanded + "*"))
         matches = [format_path_match(m) for m in raw]
-        if len(matches) == 0:
+        if len(matches) == 1:
             match = matches[0]
             match_path = match[:-1] if match.endswith("/") else match
             if os.path.isdir(match_path):
