@@ -90,6 +90,7 @@ def command_completion(text, state):
     if buf.endswith(" "):
         tokens.append("")
 
+    # Command completion for the first token
     if len(tokens) == 1:
         builtin_matches = [n for n in builtin_functions if n.startswith(text)]
         exe_matches = [n for n in get_path_executables() if n.startswith(text)]
@@ -97,6 +98,7 @@ def command_completion(text, state):
         if len(matches) == 1:
             return matches[0] + " "
 
+    # File/directory completion for any token
     t = text
     if "/" in t:
         dirpart, prefix = t.rsplit("/", 1)
@@ -112,9 +114,12 @@ def command_completion(text, state):
     matches = sorted(e for e in entries if e.startswith(prefix))
     if len(matches) == 1:
         chosen = matches[0]
-        suffix = chosen[len(prefix):]
+        # Compose the full match (including dirpart)
+        full_match = (dirpart + "/" if dirpart else "") + chosen
+        # Only insert the unmatched part (suffix) after the current text
+        suffix = full_match[len(text):]
         is_dir = os.path.isdir(os.path.join(search_dir, chosen))
-        return suffix + ("/" if is_dir else " ")
+        return suffix + ("/" if is_dir and not suffix.endswith("/") else " " if not is_dir else "")
     return None
 
 readline.set_completer(command_completion)
