@@ -90,6 +90,11 @@ def command_completion(text, state):
             cmd = cmd_matches[0]
 
             raw_args = sorted(glob.glob("*"))
+            
+            dir_args = [a for a in raw_args if os.path.isdir(a)]
+            if dir_args:
+                raw_args = dir_args
+
             formatted_args = [format_path_match(a) for a in raw_args]
 
             if len(formatted_args) == 1:
