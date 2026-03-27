@@ -21,7 +21,6 @@ def get_path_executables():
                 if allowed_extensions is not None:
                     root, ext = os.path.splitext(entry)
                     if ext.lower() in allowed_extensions:
-                        # store both root and full entry; helps "extension complete"
                         exes.add(root)
                         exes.add(entry)
                 else:
@@ -73,10 +72,6 @@ def split_redirection(tokens, ops):
             return cleaned, file, mode
     return tokens, None, None
 
-# ----------------------------
-# Completion implementation
-# ----------------------------
-
 _EXEC_CACHE = None
 
 def _executables():
@@ -101,9 +96,7 @@ def _complete_path(prefix, only_dirs=False):
     if prefix == "":
         prefix = ""
 
-    # Expand ~ for matching, but keep user-facing prefix style when possible
     expanded = os.path.expanduser(prefix)
-    # Decide directory to scan
     scan_dir, base = os.path.split(expanded)
 
     if scan_dir == "":
@@ -120,19 +113,16 @@ def _complete_path(prefix, only_dirs=False):
         if only_dirs and not is_dir:
             continue
 
-        # Build suggestion using the *original* prefix's directory component if user typed one
         typed_dir, _ = os.path.split(prefix)
         if typed_dir == "":
             candidate = e
         else:
-            # keep original separator usage
             candidate = typed_dir.rstrip("/\\") + os.sep + e
 
         if is_dir:
             candidate += os.sep
         out.append(candidate)
 
-    # Optional: sort for stable cycling
     out.sort()
     return out
 
@@ -146,17 +136,14 @@ def _parse_line_for_completion(line, begidx):
     try:
         tokens = shlex.split(before_cursor)
     except ValueError:
-        # incomplete quotes; best-effort split
         tokens = before_cursor.split()
 
-    # If cursor is at a space, we're starting a new token
     if before_cursor.endswith((" ", "\t")):
         tokens.append("")
     cur_index = len(tokens) - 1 if tokens else 0
     return tokens, cur_index
 
 def _command_candidates(text):
-    # builtin + PATH executables
     cands = set(builtin_functions.keys()) | set(_executables())
     return sorted([c for c in cands if c.startswith(text)])
 
@@ -174,8 +161,6 @@ def _arg_candidates(cmd, text):
         cands = set(builtin_functions.keys()) | set(_executables())
         return sorted([c for c in cands if c.startswith(text)])
 
-    # Default: file completion for args
-    # If you want "extension complete" for files, you could filter here by ext.
     return _complete_path(text, only_dirs=False)
 
 def _completer(text, state):
@@ -189,7 +174,6 @@ def _completer(text, state):
 
     tokens, cur_i = _parse_line_for_completion(line, begidx)
 
-    # Decide whether we are completing the command name or an argument
     if not tokens or cur_i == 0:
         matches = _command_candidates(text)
     else:
@@ -202,20 +186,15 @@ def _completer(text, state):
         return None
 
 def setup_completion():
-    # Basic readline configuration
     readline.set_completer(_completer)
     readline.parse_and_bind("tab: complete")
 
-    # Helps with nicer completion behavior on many systems
-    # (If unsupported, it's fine.)
     try:
-        readline.set_completer_delims(" \t\n")
+        readline.set_completion_append_character(" ")
     except Exception:
         pass
 
-# ----------------------------
-# CLI loop
-# ----------------------------
+
 
 def run_cli():
     setup_completion()
