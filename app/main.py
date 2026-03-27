@@ -65,6 +65,11 @@ builtin_functions = {
     "cd": cd_function,
 }
 
+def format_path_match(m):
+    if os.path.isdir(m):
+        return m.rstrip("/\\") + "/"
+    return m + " "
+
 def command_completion(text, state):
     buffer = readline.get_line_buffer()
     tokens = shlex.split(buffer, posix = True)
@@ -82,19 +87,11 @@ def command_completion(text, state):
         expanded = os.path.expanduser(os.path.expandvars(text))
         if not expanded:
             expanded = "."
-        matches = glob.glob(expanded + "*")
+        raw = glob.glob(expanded + "*")
+        raw = sorted(raw)
 
-        matches = [
-            m + "/" if os.path.isdir(m) and not m.endswith("/") else m
-            for m in matches
-        ]
-        if len(matches) == 1:
-            match = matches[0]
-            match_path = match[:-1] if match.endswith("/") else match
-            if os.path.isdir(match_path):
-                matches[0] = match
-            else:
-                matches[0] = match + " "
+        matches = [format_path_match(m) for m in raw]
+
     if state < len(matches):
         return matches[state]
     return None
