@@ -1,13 +1,14 @@
-import sys, shutil, os, subprocess, shlex, readline
+import sys, shutil, os, subprocess, shlex, readline, glob
+import token
 
 def get_path_executables():
     exes = set()
     path_env = os.environ.get("PATH", "")
 
     pathext = os.environ.get("PATHEXT")
-    exts = None
+    allowed_extensions = None
     if pathext:
-        exts = {e.lower() for e in pathext.split(";") if e}
+        allowed_extensions = {e.lower() for e in pathext.split(";") if e}
 
     for folder in path_env.split(os.pathsep):
         if not folder:
@@ -18,9 +19,9 @@ def get_path_executables():
                 if not os.path.isfile(full):
                     continue
 
-                if exts is not None:
+                if allowed_extensions is not None:
                     root, ext = os.path.splitext(entry)
-                    if ext.lower() in exts:
+                    if ext.lower() in allowed_extensions:
                         exes.add(root)
                 else:
                     if os.access(full, os.X_OK):
@@ -29,7 +30,6 @@ def get_path_executables():
             continue
     return exes
 
-PATH_EXES = get_path_executables()
                     
 
 def cd_function(user_inputs):
@@ -67,18 +67,29 @@ builtin_functions = {
 
 def command_completion(text, state):
     buffer = readline.get_line_buffer()
+    tokens = shlex.split(buffer, posix = True)
 
-    if " " in buffer.lstrip():
-        return None
+    if buffer.endswith(" "):
+        tokens.append("")
 
-    builtin_matches = [name for name in builtin_functions if name.startswith(text)]
-    exe_matches = [name for name in get_path_executables() if name.startswith(text)]
+    if len(tokens) <= 1:
+        builtin_matches = [name for name in builtin_functions if name.startswith(text)]
+        exe_matches = [name for name in get_path_executables() if name.startswith(text)]
+        matches = sorted(set(builtin_matches + exe_matches))
+        if len(matches) == 1:
+            matches = [matches[0] + " "]
+    else:
+        expanded = os.path.expanduser(os.path.expandvars(text))
+        if not expanded:
+            expanded = "."
+        matches = glob.glob(expanded + "*")
 
-    matches = sorted(set(builtin_matches + exe_matches))
-
-    if len(matches) == 1:
-        matches = [matches[0] + " "]
-
+        matches = [
+            m + "/" if os.path.isdir(m) else m
+            for m in matches
+        ]
+        if text:
+            matches = [m if m.startswith(text) else os.path.join(text, os.path.basename(m)) for m in matches]
     if state < len(matches):
         return matches[state]
     return None
@@ -87,49 +98,18 @@ readline.set_completer(command_completion)
 readline.set_completer_delims(" \t\n")
 readline.parse_and_bind("tab: complete")
 
-def split_stdout_redirection(tokens):
-    if ">"  in tokens:
-        op = ">"
-        mode = "w"
-    elif "1>" in tokens:
-        op = "1>"
-        mode = "w"
-    elif ">>" in tokens:
-        op = ">>"
-        mode = "a"
-    elif "1>>" in tokens:
-        op = "1>>"
-        mode = "a"
-    else:
-        return tokens, None, None
-
-    pos = tokens.index(op)
-    if pos == len(tokens) - 1:
-        sys.stderr.write(f"syntax error: missing filename after {op}\n")
-        return None, None, None
-
-    cleaned = tokens[:pos]
-    out_file = tokens[pos + 1]
-    return cleaned, out_file, mode
-
-def split_stderr_redirection(tokens):
-    if "2>" in tokens:
-        op = "2>"
-        mode = "w"
-    elif "2>>" in tokens:
-        op = "2>>"
-        mode = "a"
-    else:
-        return tokens, None, None
-
-    pos = tokens.index(op)
-    if pos == len(tokens) - 1:
-        sys.stderr.write(f"syntax error: missing filename after {op}\n")
-        return None, None, None
-
-    cleaned = tokens[:pos]
-    err_file= tokens[pos +1]
-    return cleaned, err_file, mode
+def split_redirection(tokens, ops):
+    for op, mode in ops:
+        if op in tokens:
+            pos = tokens.index(op)
+            if pos == len(tokens) - 1:
+                sys.stderr.write(f"syntax error: expected file after {op}\n")
+                return None, None, None
+            cleaned = tokens[:pos]
+            file = tokens[pos+1]
+            return cleaned, file, mode
+    return tokens, None, None
+            
 
 def run_cli():
     while True:
@@ -142,11 +122,13 @@ def run_cli():
                 sys.stderr.write(f"parse error: {e}\n")
                 continue
 
-            user_inputs, out_file, out_mode = split_stdout_redirection(user_inputs)
+            user_inputs, out_file, out_mode = split_redirection(
+                user_inputs, [(">", "w"), ("1>", "w"), (">>", "a"), ("1>>", "a")])
             if user_inputs is None:
                 continue
 
-            user_inputs, err_file, err_mode = split_stderr_redirection(user_inputs)
+            user_inputs, err_file, err_mode = split_redirection(
+                user_inputs, [("2>", "w"), ("2>>", "a")])
             if user_inputs is None:
                 continue
 
