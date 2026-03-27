@@ -90,31 +90,18 @@ def command_completion(text, state):
         expanded = os.path.expanduser(os.path.expandvars(text)) if text else "."
         raw = sorted(glob.glob(expanded + "*"))
 
-        if not raw:
-            matches = []
+        if len(raw) != 1:
+            return None
 
-        elif len(raw) == 1:
-            match = raw[0]
-            if os.path.isdir(match):
-                matches = [match.rstrip("/\\") + "/"]
-            else:
-                matches = [match + " "]
+        match = raw[0]
+        name = os.path.basename(match.rstrip("/\\"))
 
+        suffix = name[len(text):]
+
+        if os.path.isdir(match):
+            return suffix + "/"
         else:
-            base_names = [os.path.basename(p.rstrip("/\\")) for p in raw]
-
-            prefix = os.path.commonprefix(base_names)
-
-            if prefix and prefix != os.path.basename(text):
-                dir_part = os.path.dirname(text)
-                completed = os.path.join(dir_part, prefix) if dir_part else prefix
-
-                if os.path.isdir(os.path.expanduser(os.path.expandvars(completed))):
-                    matches = [completed.rstrip("/\\") + "/"]
-                else:
-                    matches = [completed]
-            else:
-                matches = []
+            return suffix + " "
     if state < len(matches):
         return matches[state]
     return None
