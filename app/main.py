@@ -82,48 +82,21 @@ def command_completion(text, state):
 
     buf = readline.get_line_buffer()
 
-    # Split buffer into tokens
     try:
         tokens = shlex.split(buf, posix=True)
     except ValueError:
         tokens = buf.split()
 
-    # If buffer ends with space, user is starting a new argument
     if buf.endswith(" "):
         tokens.append("")
 
-    # If completing the first token
     if len(tokens) == 1:
-        # Try command completion first
         builtin_matches = [n for n in builtin_functions if n.startswith(text)]
         exe_matches = [n for n in get_path_executables() if n.startswith(text)]
         matches = sorted(set(builtin_matches + exe_matches))
         if len(matches) == 1:
             return matches[0] + " "
-        # If no command matches, fall through to file/directory completion
 
-        # File/directory completion for the first token
-        t = text
-        if "/" in t:
-            dirpart, prefix = t.rsplit("/", 1)
-            search_dir = os.path.expanduser(os.path.expandvars(dirpart or ".")) + "/"
-        else:
-            dirpart, prefix, search_dir = "", t, "."
-
-        try:
-            entries = os.listdir(search_dir)
-        except OSError:
-            return None
-
-        matches = sorted(e for e in entries if e.startswith(prefix))
-        if len(matches) == 1:
-            chosen = matches[0]
-            full_token = (dirpart + "/" if dirpart else "") + chosen
-            is_dir = os.path.isdir(os.path.join(search_dir, chosen))
-            return full_token + ("/" if is_dir else "")
-        return None
-
-    # File/directory completion for arguments
     t = text
     if "/" in t:
         dirpart, prefix = t.rsplit("/", 1)
@@ -139,54 +112,6 @@ def command_completion(text, state):
     matches = sorted(e for e in entries if e.startswith(prefix))
     if len(matches) == 1:
         chosen = matches[0]
-        full_token = (dirpart + "/" if dirpart else "") + chosen
-        is_dir = os.path.isdir(os.path.join(search_dir, chosen))
-        return full_token + ("/" if is_dir else " ")
-    return None
-
-def command_completion(text, state):
-    if state != 0:
-        return None
-
-    buf = readline.get_line_buffer()
-
-    # Split buffer into tokens
-    try:
-        tokens = shlex.split(buf, posix=True)
-    except ValueError:
-        tokens = buf.split()
-
-    # If buffer ends with space, user is starting a new argument
-    if buf.endswith(" "):
-        tokens.append("")
-
-    # If completing the first token
-    if len(tokens) == 1:
-        # Try command completion first
-        builtin_matches = [n for n in builtin_functions if n.startswith(text)]
-        exe_matches = [n for n in get_path_executables() if n.startswith(text)]
-        matches = sorted(set(builtin_matches + exe_matches))
-        if len(matches) == 1:
-            return matches[0] + " "
-        # If no command matches, fall through to file/directory completion
-
-    # File/directory completion for any token (including first if not a command)
-    t = text
-    if "/" in t:
-        dirpart, prefix = t.rsplit("/", 1)
-        search_dir = os.path.expanduser(os.path.expandvars(dirpart or ".")) + "/"
-    else:
-        dirpart, prefix, search_dir = "", t, "."
-
-    try:
-        entries = os.listdir(search_dir)
-    except OSError:
-        return None
-
-    matches = sorted(e for e in entries if e.startswith(prefix))
-    if len(matches) == 1:
-        chosen = matches[0]
-        # Only insert the unmatched part (suffix) after the current text
         suffix = chosen[len(prefix):]
         is_dir = os.path.isdir(os.path.join(search_dir, chosen))
         return suffix + ("/" if is_dir else " ")
