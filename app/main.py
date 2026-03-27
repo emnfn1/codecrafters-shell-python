@@ -65,37 +65,60 @@ builtin_functions = {
     "cd": cd_function,
 }
 
+_EXECUTABLES = None
+
+def get_executables_cached():
+    global _EXECUTABLES
+    if _EXECUTABLES is None:
+        _EXECUTABLES = get_path_executables()
+    return _EXECUTABLES
+
 def command_completion(text, state):
-    buffer = readline.get_line_buffer()
     try:
-        tokens = shlex.split(buffer, posix = True)
-    except ValueError:
-        tokens = buffer.split()
+        buffer = readline.get_line_buffer()
+        try:
+            tokens = shlex.split(buffer, posix=True)
+        except ValueError:
+            tokens = buffer.split()
 
-    if buffer.endswith(" "):
-        tokens.append("")
+        if buffer.endswith(" "):
+            tokens.append("")
 
-    if len(tokens) <= 1:
-        builtin_matches = [name for name in builtin_functions if name.startswith(text)]
-        exe_matches = [name for name in get_path_executables() if name.startswith(text)]
-        matches = sorted(set(builtin_matches + exe_matches))
-        if len(matches) == 1:
-            matches = [matches[0] + " "]
+        completing_cmd = len(tokens) <= 1
 
-    expanded = os.path.expanduser(os.path.expandvars(text)) if text else "."
-    raw = sorted(glob.glob(expanded + "*"))
-    if len(raw) == 1:
-        match = raw[0]
-        name = os.path.basename(match.rstrip("/\\"))
-        suffix = name[len(text):] if text else name
-        if os.path.isdir(match):
-            result = suffix + "/"
+        if completing_cmd:
+            candidates = sorted(
+                b for b in (set(builtin_functions) | get_executables_cached())
+                if b.startswith(text)
+            )
+            if len(candidates) == 1:
+                candidates = [candidates[0] + " "]
         else:
-            result = suffix + " "
-        if state == 0:
-            return result
+            cmd = tokens[0]
+            expanded = os.path.expanduser(os.path.expandvars(text)) if text else ""
+            raw = sorted(glob.glob((expanded or ".") + "*"))
+
+            candidates = []
+            for match in raw:
+                display = match
+                if text.startswith("~"):
+                    home = os.path.expanduser("~")
+                    display = "~" + match[len(home):]
+                if os.path.isdir(match):
+                    display += "/"
+                else:
+                    display += " "
+                candidates.append(display)
+
+            if cmd == "cd":
+                candidates = [c for c in candidates if c.endswith("/")]
+
+        if state < len(candidates):
+            return candidates[state]
         return None
-    return None
+
+    except Exception:
+        return None
 
 readline.set_completer(command_completion)
 readline.set_completer_delims(" \t\n")
