@@ -93,9 +93,7 @@ def command_completion(text, state):
         if len(matches) == 1:
             match = matches[0]
             match_path = match[:-1] if match.endswith("/") else match
-            if os.path.isdir(match_path):
-                matches[0] = match
-            else:
+            if not os.path.isdir(match_path):
                 matches[0] = match + " "
     if state < len(matches):
         return matches[state]
