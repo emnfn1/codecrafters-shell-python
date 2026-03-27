@@ -1,5 +1,4 @@
 import sys, shutil, os, subprocess, shlex, readline, glob
-import token
 
 def get_path_executables():
     exes = set()
@@ -22,7 +21,9 @@ def get_path_executables():
                 if allowed_extensions is not None:
                     root, ext = os.path.splitext(entry)
                     if ext.lower() in allowed_extensions:
+                        # store both root and full entry; helps "extension complete"
                         exes.add(root)
+                        exes.add(entry)
                 else:
                     if os.access(full, os.X_OK):
                         exes.add(entry)
@@ -30,23 +31,18 @@ def get_path_executables():
             continue
     return exes
 
-                    
-
 def cd_function(user_inputs):
     if not user_inputs:
         os.chdir(os.path.expanduser("~"))
         return
 
-    target = user_inputs[0]
-
-    target = os.path.expanduser(target)
+    target = os.path.expanduser(user_inputs[0])
 
     if not os.path.isdir(target):
         sys.stderr.write(f"cd: {target}: No such file or directory\n")
         return
 
     os.chdir(target)
-
 
 def custom_user_inputs(user_inputs):
     for user_input in user_inputs:
@@ -65,67 +61,6 @@ builtin_functions = {
     "cd": cd_function,
 }
 
-def get_cwd_executables():
-    exes = set()
-    try:
-        for entry in os.listdir("."):
-            full = os.path.join(".", entry)
-            if os.path.isfile(full) and os.access(full, os.X_OK):
-                exes.add(entry)
-    except OSError:
-        pass
-    return exes
-
-def command_completion(text, state):
-    if state != 0:
-        return None
-
-    buf = readline.get_line_buffer()
-
-    try:
-        tokens = shlex.split(buf, posix=True)
-    except ValueError:
-        tokens = buf.split()
-
-    if buf.endswith(" "):
-        tokens.append("")
-
-    # Command completion for the first token
-    if len(tokens) == 1:
-        builtin_matches = [n for n in builtin_functions if n.startswith(text)]
-        exe_matches = [n for n in get_path_executables() if n.startswith(text)]
-        matches = sorted(set(builtin_matches + exe_matches))
-        if len(matches) == 1:
-            return matches[0] + " "
-
-    # File/directory completion for any token
-    t = text
-    if "/" in t:
-        dirpart, prefix = t.rsplit("/", 1)
-        search_dir = os.path.expanduser(os.path.expandvars(dirpart or ".")) + "/"
-    else:
-        dirpart, prefix, search_dir = "", t, "."
-
-    try:
-        entries = os.listdir(search_dir)
-    except OSError:
-        return None
-
-    matches = sorted(e for e in entries if e.startswith(prefix))
-    if len(matches) == 1:
-        chosen = matches[0]
-        # Compose the full match (including dirpart)
-        full_match = (dirpart + "/" if dirpart else "") + chosen
-        # Only insert the unmatched part (suffix) after the current text
-        suffix = full_match[len(text):]
-        is_dir = os.path.isdir(os.path.join(search_dir, chosen))
-        return suffix + ("/" if is_dir and not suffix.endswith("/") else " " if not is_dir else "")
-    return None
-
-readline.set_completer(command_completion)
-readline.set_completer_delims(" \t\n")
-readline.parse_and_bind("tab: complete")
-
 def split_redirection(tokens, ops):
     for op, mode in ops:
         if op in tokens:
@@ -137,12 +72,158 @@ def split_redirection(tokens, ops):
             file = tokens[pos+1]
             return cleaned, file, mode
     return tokens, None, None
-            
+
+# ----------------------------
+# Completion implementation
+# ----------------------------
+
+_EXEC_CACHE = None
+
+def _executables():
+    global _EXEC_CACHE
+    if _EXEC_CACHE is None:
+        _EXEC_CACHE = get_path_executables()
+    return _EXEC_CACHE
+
+def _listdir_safe(folder):
+    try:
+        return os.listdir(folder)
+    except OSError:
+        return []
+
+def _complete_path(prefix, only_dirs=False):
+    """
+    File + directory completion, supports:
+    - nested paths: src/uti<Tab>
+    - ~ expansion: ~/Do<Tab>
+    - returns dirs with trailing slash
+    """
+    if prefix == "":
+        prefix = ""
+
+    # Expand ~ for matching, but keep user-facing prefix style when possible
+    expanded = os.path.expanduser(prefix)
+    # Decide directory to scan
+    scan_dir, base = os.path.split(expanded)
+
+    if scan_dir == "":
+        scan_dir = "."
+    entries = _listdir_safe(scan_dir)
+
+    out = []
+    for e in entries:
+        if not e.startswith(base):
+            continue
+        full = os.path.join(scan_dir, e)
+        is_dir = os.path.isdir(full)
+
+        if only_dirs and not is_dir:
+            continue
+
+        # Build suggestion using the *original* prefix's directory component if user typed one
+        typed_dir, _ = os.path.split(prefix)
+        if typed_dir == "":
+            candidate = e
+        else:
+            # keep original separator usage
+            candidate = typed_dir.rstrip("/\\") + os.sep + e
+
+        if is_dir:
+            candidate += os.sep
+        out.append(candidate)
+
+    # Optional: sort for stable cycling
+    out.sort()
+    return out
+
+def _parse_line_for_completion(line, begidx):
+    """
+    Return (tokens, current_token_index).
+    We use shlex to respect quotes as much as we can.
+    If shlex fails (unfinished quotes), fall back to simple split.
+    """
+    before_cursor = line[:begidx]
+    try:
+        tokens = shlex.split(before_cursor)
+    except ValueError:
+        # incomplete quotes; best-effort split
+        tokens = before_cursor.split()
+
+    # If cursor is at a space, we're starting a new token
+    if before_cursor.endswith((" ", "\t")):
+        tokens.append("")
+    cur_index = len(tokens) - 1 if tokens else 0
+    return tokens, cur_index
+
+def _command_candidates(text):
+    # builtin + PATH executables
+    cands = set(builtin_functions.keys()) | set(_executables())
+    return sorted([c for c in cands if c.startswith(text)])
+
+def _arg_candidates(cmd, text):
+    """
+    Command-specific argument completion:
+    - cd: directories only
+    - type: builtins + executables as arguments
+    - default: file completion (files + dirs)
+    """
+    if cmd == "cd":
+        return _complete_path(text, only_dirs=True)
+
+    if cmd == "type":
+        cands = set(builtin_functions.keys()) | set(_executables())
+        return sorted([c for c in cands if c.startswith(text)])
+
+    # Default: file completion for args
+    # If you want "extension complete" for files, you could filter here by ext.
+    return _complete_path(text, only_dirs=False)
+
+def _completer(text, state):
+    """
+    readline completer signature:
+      - text: the current token fragment
+      - state: 0..n, return nth match or None
+    """
+    line = readline.get_line_buffer()
+    begidx = readline.get_begidx()
+
+    tokens, cur_i = _parse_line_for_completion(line, begidx)
+
+    # Decide whether we are completing the command name or an argument
+    if not tokens or cur_i == 0:
+        matches = _command_candidates(text)
+    else:
+        cmd = tokens[0]
+        matches = _arg_candidates(cmd, text)
+
+    try:
+        return matches[state]
+    except IndexError:
+        return None
+
+def setup_completion():
+    # Basic readline configuration
+    readline.set_completer(_completer)
+    readline.parse_and_bind("tab: complete")
+
+    # Helps with nicer completion behavior on many systems
+    # (If unsupported, it's fine.)
+    try:
+        readline.set_completer_delims(" \t\n")
+    except Exception:
+        pass
+
+# ----------------------------
+# CLI loop
+# ----------------------------
+
 def run_cli():
+    setup_completion()
+
     while True:
         try:
             user_inputs = input("$ ")
-            
+
             try:
                 user_inputs = shlex.split(user_inputs)
             except ValueError as e:
@@ -150,18 +231,20 @@ def run_cli():
                 continue
 
             user_inputs, out_file, out_mode = split_redirection(
-                user_inputs, [(">", "w"), ("1>", "w"), (">>", "a"), ("1>>", "a")])
+                user_inputs, [(">", "w"), ("1>", "w"), (">>", "a"), ("1>>", "a")]
+            )
             if user_inputs is None:
                 continue
 
             user_inputs, err_file, err_mode = split_redirection(
-                user_inputs, [("2>", "w"), ("2>>", "a")])
+                user_inputs, [("2>", "w"), ("2>>", "a")]
+            )
             if user_inputs is None:
                 continue
 
             if len(user_inputs) == 0:
                 continue
-            
+
             cmd = user_inputs[0]
             args = user_inputs[1:]
 
@@ -178,7 +261,7 @@ def run_cli():
                         sys.stdout = out_f
 
                     if err_file:
-                        err_f = open(err_file, err_mode, encoding ="utf-8")
+                        err_f = open(err_file, err_mode, encoding="utf-8")
                         sys.stderr = err_f
 
                     builtin_functions[cmd](args)
@@ -193,12 +276,10 @@ def run_cli():
 
                 continue
 
-
             path = shutil.which(cmd)
             if not path:
                 sys.stderr.write(f"{cmd}: command not found\n")
                 continue
-            
 
             out_handle = None
             err_handle = None
@@ -240,8 +321,6 @@ def run_cli():
         except KeyboardInterrupt:
             sys.stdout.write("\n")
             continue
-
-
 
 if __name__ == "__main__":
     run_cli()
