@@ -86,24 +86,20 @@ def command_completion(text, state):
         matches = sorted(set(builtin_matches + exe_matches))
         if len(matches) == 1:
             matches = [matches[0] + " "]
-    else:
-        expanded = os.path.expanduser(os.path.expandvars(text)) if text else "."
-        raw = sorted(glob.glob(expanded + "*"))
 
-        if len(raw) != 1:
-            return None
-
+    expanded = os.path.expanduser(os.path.expandvars(text)) if text else "."
+    raw = sorted(glob.glob(expanded + "*"))
+    if len(raw) == 1:
         match = raw[0]
         name = os.path.basename(match.rstrip("/\\"))
-
-        suffix = name[len(text):]
-
+        suffix = name[len(text):] if text else name
         if os.path.isdir(match):
-            return suffix + "/"
+            result = suffix + "/"
         else:
-            return suffix + " "
-    if state < len(matches):
-        return matches[state]
+            result = suffix + " "
+        if state == 0:
+            return result
+        return None
     return None
 
 readline.set_completer(command_completion)
