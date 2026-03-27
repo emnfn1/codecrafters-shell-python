@@ -66,49 +66,37 @@ builtin_functions = {
 }
 
 def command_completion(text, state):
-    buffer = readline.get_line_buffer()
-    try:
-        tokens = shlex.split(buffer, posix=True)
-    except ValueError:
-        tokens = buffer.split()
+    if state != 0:
+        return None
 
-    if buffer.endswith(" "):
-        tokens.append("")
+    buf = readline.get_line_buffer()
 
-    if len(tokens) <= 1:
-        builtin_matches = [name for name in builtin_functions if name.startswith(text)]
-        exe_matches = [name for name in get_path_executables() if name.startswith(text)]
-        matches = sorted(set(builtin_matches + exe_matches))
+    if " " in buf:
+        t = text 
+        if "/" in t:
+            dirpart, prefix = t.rsplit("/", 1)
+            search_dir = os.path.expanduser(os.path.expandvars(dirpart or ".")) + "/"
+        else:
+            dirpart, prefix, search_dir = "", t, "."
 
+        try:
+            entries = os.listdir(search_dir)
+        except OSError:
+            return None
+
+        matches = sorted(e for e in entries if e.startswith(prefix))
         if len(matches) == 1:
-            return matches[0] + " " if state == 0 else None
-        return matches[state] if state < len(matches) else None
+            chosen = matches[0]
+            full_token = (dirpart + "/" if dirpart else "") + chosen
+            is_dir = os.path.isdir(os.path.join(search_dir, chosen))
+            return full_token + ("/" if is_dir else " ")
+        return None
 
-    current = tokens[-1] 
-
-
-    expanded = os.path.expanduser(os.path.expandvars(current))
-
-    pattern = (expanded if expanded else ".") + "*"
-    raw = sorted(glob.glob(pattern))
-
-    if len(raw) == 1:
-        match = raw[0]
-
-        prefix = os.path.dirname(current)
-        base = os.path.basename(match.rstrip("/\\"))
-        if prefix:
-            suffix = base[len(os.path.basename(current)):]
-        else:
-            suffix = base[len(current):] if current else base
-
-        if os.path.isdir(match):
-            completion = suffix + "/"
-        else:
-            completion = suffix + " "
-
-        return completion if state == 0 else None
-
+    builtin_matches = [n for n in builtin_functions if n.startswith(text)]
+    exe_matches = [n for n in get_path_executables() if n.startswith(text)]
+    matches = sorted(set(builtin_matches + exe_matches))
+    if len(matches) == 1:
+        return matches[0] + " "
     return None
 
 readline.set_completer(command_completion)
