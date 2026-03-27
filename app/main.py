@@ -85,12 +85,12 @@ def command_completion(text, state):
         matches = glob.glob(expanded + "*")
 
         matches = [
-            m + "/" if os.path.isdir(m) else m
+            m + "/" if os.path.isdir(m) and not m.endswith("/") else m
             for m in matches
         ]
         if text:
             matches = [m if m.startswith(text) else os.path.join(text, os.path.basename(m)) for m in matches]
-        if len(matches) == 1 and not matches[0].endswith("/"):
+        if len(matches) == 1 and not os.path.isdir(matches[0].rstrip("/")):
             matches[0] += " "
     if state < len(matches):
         return matches[state]
