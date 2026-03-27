@@ -83,33 +83,23 @@ def command_completion(text, state):
     if len(tokens) <= 1:
         builtin_matches = [name for name in builtin_functions if name.startswith(text)]
         exe_matches = [name for name in get_path_executables() if name.startswith(text)]
-        cmd_matches = sorted(set(builtin_matches + exe_matches))
-        if len(cmd_matches) != 1:
-            matches = cmd_matches
-        else:
-            cmd = cmd_matches[0]
-
-            raw_args = sorted(glob.glob("*"))
-            
-            dir_args = [a for a in raw_args if os.path.isdir(a)]
-            if dir_args:
-                raw_args = dir_args
-
-            formatted_args = [format_path_match(a) for a in raw_args]
-
-            if len(formatted_args) == 1:
-                matches = [cmd + " " + formatted_args[0]]
-            else:
-                matches = [cmd + " "]
+        matches = sorted(set(builtin_matches + exe_matches))
+        if len(matches) == 1:
+            matches = [matches[0] + " "]
     else:
-        expanded = os.path.expanduser(os.path.expandvars(text))
-        if not expanded:
+        if text == "":
             expanded = "."
-        raw = glob.glob(expanded + "*")
-        raw = sorted(raw)
-
+        else:
+            expanded = os.path.expanduser(os.path.expandvars(text))
+        raw = sorted(glob.glob(expanded + "*"))
         matches = [format_path_match(m) for m in raw]
-
+        if len(matches) == 0:
+            match = matches[0]
+            match_path = match[:-1] if match.endswith("/") else match
+            if os.path.isdir(match_path):
+                matches[0] = match
+            else:
+                matches[0] = match + " "
     if state < len(matches):
         return matches[state]
     return None
