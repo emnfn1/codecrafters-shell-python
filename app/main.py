@@ -65,15 +65,10 @@ builtin_functions = {
     "cd": cd_function,
 }
 
-def format_path_match(m):
-    if os.path.isdir(m):
-        return m.rstrip("/\\") + "/"
-    return m
-
 def command_completion(text, state):
     buffer = readline.get_line_buffer()
     try:
-        tokens = shlex.split(buffer, posix = True)
+        tokens = shlex.split(buffer, posix=True)
     except ValueError:
         tokens = buffer.split()
 
@@ -84,22 +79,36 @@ def command_completion(text, state):
         builtin_matches = [name for name in builtin_functions if name.startswith(text)]
         exe_matches = [name for name in get_path_executables() if name.startswith(text)]
         matches = sorted(set(builtin_matches + exe_matches))
-        if len(matches) == 1:
-            matches = [matches[0] + " "]
 
-    expanded = os.path.expanduser(os.path.expandvars(text)) if text else "."
-    raw = sorted(glob.glob(expanded + "*"))
+        if len(matches) == 1:
+            return matches[0] + " " if state == 0 else None
+        return matches[state] if state < len(matches) else None
+
+    current = tokens[-1] 
+
+
+    expanded = os.path.expanduser(os.path.expandvars(current))
+
+    pattern = (expanded if expanded else ".") + "*"
+    raw = sorted(glob.glob(pattern))
+
     if len(raw) == 1:
         match = raw[0]
-        name = os.path.basename(match.rstrip("/\\"))
-        suffix = name[len(text):] if text else name
-        if os.path.isdir(match):
-            result = suffix + "/"
+
+        prefix = os.path.dirname(current)
+        base = os.path.basename(match.rstrip("/\\"))
+        if prefix:
+            suffix = base[len(os.path.basename(current)):]
         else:
-            result = suffix + " "
-        if state == 0:
-            return result
-        return None
+            suffix = base[len(current):] if current else base
+
+        if os.path.isdir(match):
+            completion = suffix + "/"
+        else:
+            completion = suffix + " "
+
+        return completion if state == 0 else None
+
     return None
 
 readline.set_completer(command_completion)
