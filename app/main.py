@@ -89,12 +89,14 @@ def command_completion(text, state):
     else:
         expanded = os.path.expanduser(os.path.expandvars(text)) if text else "."
         raw = sorted(glob.glob(expanded + "*"))
-        matches = [format_path_match(m) for m in raw]
-        if len(matches) == 1:
-            match = matches[0]
-            match_path = match[:-1] if match.endswith("/") else match
-            if not os.path.isdir(match_path):
-                matches[0] = match + " "
+        if len(raw) == 1:
+            match = raw[0]
+            if os.path.isdir(match):
+                matches = [match.rstrip("/\\") + "/"]
+            else:
+                matches = [match + " "]
+        else:
+            matches = []
     if state < len(matches):
         return matches[state]
     return None
