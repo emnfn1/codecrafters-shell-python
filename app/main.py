@@ -96,7 +96,8 @@ def command_completion(text, state):
         else:
             cmd = tokens[0]
             expanded = os.path.expanduser(os.path.expandvars(text)) if text else ""
-            raw = sorted(glob.glob((expanded or ".") + "*"))
+            pattern = (expanded + "*") if expanded else "*"
+            raw = sorted(glob.glob(pattern))
 
             candidates = []
             for match in raw:
@@ -110,12 +111,12 @@ def command_completion(text, state):
                     display += " "
                 candidates.append(display)
 
-            if cmd == "cd":
-                candidates = [c for c in candidates if c.endswith("/")]
+        if cmd == "cd":
+            candidates = [c for c in candidates if c.endswith("/")]
 
-        if state < len(candidates):
-            return candidates[state]
-        return None
+            if state < len(candidates):
+                return candidates[state]
+            return None
 
     except Exception:
         return None
