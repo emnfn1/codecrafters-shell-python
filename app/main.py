@@ -88,8 +88,6 @@ def command_completion(text, state):
             m + "/" if os.path.isdir(m) and not m.endswith("/") else m
             for m in matches
         ]
-        if text:
-            matches = [m if m.startswith(text) else os.path.join(text, os.path.basename(m)) for m in matches]
         if len(matches) == 1:
             match = matches[0]
             match_path = match[:-1] if match.endswith("/") else match
