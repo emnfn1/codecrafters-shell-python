@@ -72,7 +72,10 @@ def format_path_match(m):
 
 def command_completion(text, state):
     buffer = readline.get_line_buffer()
-    tokens = shlex.split(buffer, posix = True)
+    try:
+        tokens = shlex.split(buffer, posix = True)
+    except ValueError:
+        tokens = buffer.split()
 
     if buffer.endswith(" "):
         tokens.append("")
@@ -80,9 +83,19 @@ def command_completion(text, state):
     if len(tokens) <= 1:
         builtin_matches = [name for name in builtin_functions if name.startswith(text)]
         exe_matches = [name for name in get_path_executables() if name.startswith(text)]
-        matches = sorted(set(builtin_matches + exe_matches))
-        if len(matches) == 1:
-            matches = [matches[0] + " "]
+        cmd_matches = sorted(set(builtin_matches + exe_matches))
+        if len(cmd_matches) != 1:
+            matches = cmd_matches
+        else:
+            cmd = cmd_matches[0]
+
+            raw_args = sorted(glob.glob("*"))
+            formatted_args = [format_path_match(a) for a in raw_args]
+
+            if len(formatted_args) == 1:
+                matches = [cmd + " " + formatted_args[0]]
+            else:
+                matches = [cmd + " "]
     else:
         expanded = os.path.expanduser(os.path.expandvars(text))
         if not expanded:
@@ -112,7 +125,6 @@ def split_redirection(tokens, ops):
             return cleaned, file, mode
     return tokens, None, None
             
-
 def run_cli():
     while True:
         try:
