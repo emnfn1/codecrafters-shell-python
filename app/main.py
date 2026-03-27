@@ -111,12 +111,12 @@ def command_completion(text, state):
                     display += " "
                 candidates.append(display)
 
-        if cmd == "cd":
-            candidates = [c for c in candidates if c.endswith("/")]
+            if cmd == "cd":
+                candidates = [c for c in candidates if c.endswith("/")]
 
-            if state < len(candidates):
-                return candidates[state]
-            return None
+        if state < len(candidates):
+            return candidates[state]
+        return None
 
     except Exception:
         return None
