@@ -3,7 +3,7 @@
 
 
 #HISTORY
-HISTORY_FILE = os.environ.get("HISTORY_FILE", os.path.expanduser("~/.my_shell_history"))
+HISTORY_FILE = os.environ.get("HISTFILE", os.path.expanduser("~/.my_shell_history"))
 HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
 HISTORY_EXIT_MODE = "write"
 _SESSION_HISTORY_START = 0
