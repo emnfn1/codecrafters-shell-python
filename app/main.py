@@ -2,7 +2,30 @@
 
 
 
-#zaman bazlı invalidasyon 60 saniyede bir #path executable tarama yapıyor. 5-41 executable cache
+HISTORY_FILE = os.path.expanduser("~/.myshell_history")
+HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
+
+def setup_history():
+    readline.set_history_length(HISTORY_MAX)
+    if os.path.exists(HISTORY_FILE):
+        try:
+            readline.read_history_file(HISTORY_FILE)
+        except OSError:
+            pass
+
+    import atexit
+    atexit.register(save_history)
+
+
+def save_history():
+    try:
+        readline.write_history_file(HISTORY_FILE)
+    except OSError:
+        pass
+
+
+
+#zaman bazlı invalidasyon 60 saniyede bir #path executable tarama yapıyor. executable cache
 _PATH_EXECUTABLES = None
 _PATH_EXECUTABLES_TIMESTAMP = 0
 _CACHE_TTL = 60
@@ -40,11 +63,32 @@ def get_executables_cached():
         _PATH_EXECUTABLES = get_path_executables()
         _PATH_EXECUTABLES_TIMESTAMP = time.time()
     return _PATH_EXECUTABLES
-#5-41 executable cache
+#executable cache
 
 
  
-#builtins 45-68
+#builtins
+def builtin_history(args):
+    limit = None
+    if args:
+        try:
+            limit = int(args[0])
+            if limit <= 0:
+                sys.stderr.write("history: limit must be a positive integer\n")
+                return
+        except ValueError:
+            sys.stderr.write(f"history: {args[0]}: numeric argument required\n")
+            return
+
+    total = readline.get_current_history_length()
+    start = 1 if limit is None else max(1, total - limit + 1)
+
+    for i in range(start, total + 1):
+        entry = readline.get_history_item(i)
+        if entry:
+            sys.stdout.write(f"  {i:4}  {entry}\n")
+
+
 def cd_function(user_inputs):
     target = os.path.expanduser(user_inputs[0]) if user_inputs else os.path.expanduser("~")
     if not os.path.isdir(target):
@@ -69,12 +113,13 @@ builtin_functions = {
     "echo": lambda args: sys.stdout.write(" ".join(args) + "\n"),
     "pwd": lambda user_inputs: sys.stdout.write(f"{os.getcwd()}\n"),
     "cd": cd_function,
+    "history": builtin_history,
 }
-#builtins 45-68
+#builtins 
 
 
 
-#completion 78-124
+#completion 
 def complete_path(text, dirs_only=False):
     expanded = os.path.expanduser(os.path.expandvars(text)) if text else ""
     pattern = (expanded + "*") if expanded else "*"
@@ -122,7 +167,7 @@ def command_completion(text, state):
 readline.set_completer(command_completion)
 readline.set_completer_delims(" \t\n")
 readline.parse_and_bind("tab: complete")
-#completion 78-124
+#completion 
 
 
 
@@ -401,6 +446,8 @@ def execute_single(tokens, redirects):
 
 #main loop
 def run_cli():
+    setup_history()
+
     while True:
         try:
             user_inputs = input("$ ") 
@@ -414,6 +461,10 @@ def run_cli():
         if not user_inputs.strip():
             continue
 
+        last = readline.get_history_item(readline.get_current_history_length())
+        if user_inputs != last:
+            readline.add_history(user_inputs)
+
         try:
             segments = parse_line(user_inputs)
         except ParseError as e:
@@ -421,7 +472,7 @@ def run_cli():
             continue
 
         execute(segments)
-#main loop 248-269
+#main loop 
 
 
 
