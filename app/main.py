@@ -28,7 +28,13 @@ def save_history():
         append_session_to_file(HISTORY_FILE)
     else:
         try:
-            readline.write_history_file(HISTORY_FILE)
+            total = readline.get_current_history_length()
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                start = max(_SESSION_HISTORY_START + 1, total + 1)
+                for i in range(start, total + 1):
+                    entry = readline.get_history_item(i)
+                    if entry:
+                        f.write(entry + "\n")
         except OSError:
             pass
 
@@ -105,7 +111,12 @@ def builtin_history(args):
 
         elif flag == "-w":
             try:
-                readline.write_history_file(filepath)
+                readline.get_current_history_length()
+                with open(filepath, "w", encoding="utf-8") as f:
+                    for i in range(_SESSION_HISTORY_START + 1, total + 1):
+                        entry = readline.get_history_item(i)
+                        if entry:
+                            f.write(entry + "\n")
             except OSError as e:
                 sys.stderr.write(f"history: cannot write to {filepath}: {e}\n")
 
