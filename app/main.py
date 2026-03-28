@@ -1,7 +1,5 @@
 ﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io
 
-from numpy import append
-
 
 
 #HISTORY
