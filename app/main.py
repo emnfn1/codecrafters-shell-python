@@ -19,7 +19,7 @@ def setup_history():
         except OSError:
             pass
 
-    _SESSION_HISTORY_START = readline.get_current_history_length()
+    _SESSION_HISTORY_START = 0
 
     import atexit
     atexit.register(save_history)
