@@ -111,7 +111,7 @@ def builtin_history(args):
 
         elif flag == "-w":
             try:
-                readline.get_current_history_length()
+                total = readline.get_current_history_length()
                 with open(filepath, "w", encoding="utf-8") as f:
                     for i in range(_SESSION_HISTORY_START + 1, total + 1):
                         entry = readline.get_history_item(i)
