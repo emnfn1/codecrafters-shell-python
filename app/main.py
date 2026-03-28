@@ -6,12 +6,16 @@ HISTORY_FILE = os.path.expanduser("~/.myshell_history")
 HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
 
 def setup_history():
+    global _SESSION_HISTORY_START
     readline.set_history_length(HISTORY_MAX)
+
     if os.path.exists(HISTORY_FILE):
         try:
             readline.read_history_file(HISTORY_FILE)
         except OSError:
             pass
+
+    _SESSION_HISTORY_START = readline.get_current_history_length()
 
     import atexit
     atexit.register(save_history)
@@ -69,6 +73,10 @@ def get_executables_cached():
  
 #builtins
 def builtin_history(args):
+    if args and args[0] == "-c":
+        readline.clear_history()
+        return
+
     limit = None
     if args:
         try:
@@ -81,12 +89,18 @@ def builtin_history(args):
             return
 
     total = readline.get_current_history_length()
-    start = 1 if limit is None else max(1, total - limit + 1)
-
-    for i in range(start, total + 1):
+    
+    session_entries = []
+    for i in range(_SESSION_HISTORY_START + 1, total + 1):
         entry = readline.get_history_item(i)
         if entry:
-            sys.stdout.write(f"  {i:4}  {entry}\n")
+            session_entries.append(entry)
+
+    if limit is not None:
+        session_entries = session_entries[-limit:]
+
+    for n, entry in enumerate(session_entries, start = 1):
+        sys.stdout.write(f"  {n:4}  {entry}\n")
 
 
 def cd_function(user_inputs):
@@ -283,6 +297,7 @@ def run_builtin_with_stdin(cmd, args, stdin_text, redirects):
         finally:
             sys.stdin = old_stdin
 
+
 def execute_external(cmd, args, redirects):
     path = shutil.which(cmd)
     if not path:
@@ -421,7 +436,6 @@ def execute_pipeline(segments):
         proc.wait()
         for fd, f in open_files:
             f.close()
-
 
 
 def execute(segments):
