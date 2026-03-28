@@ -1,16 +1,22 @@
-import sys, shutil, os, subprocess, shlex, readline, glob
-import token
+﻿from multiprocessing import process
+import sys, shutil, os, subprocess, shlex, readline, glob, time
+
+
+
+#zaman bazlı invalidasyon 60 saniyede bir #path executable tarama yapıyor. 5-41 executable cache
+_PATH_EXECUTABLES = None
+_PATH_EXECUTABLES_TIMESTAMP = 0
+_CACHE_TTL = 60
+
 
 def get_path_executables():
     exes = set()
-    path_env = os.environ.get("PATH", "")
-
     pathext = os.environ.get("PATHEXT")
     allowed_extensions = None
     if pathext:
         allowed_extensions = {e.lower() for e in pathext.split(";") if e}
 
-    for folder in path_env.split(os.pathsep):
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
         if not folder:
             continue
         try:
@@ -18,37 +24,37 @@ def get_path_executables():
                 full = os.path.join(folder, entry)
                 if not os.path.isfile(full):
                     continue
-
                 if allowed_extensions is not None:
                     root, ext = os.path.splitext(entry)
                     if ext.lower() in allowed_extensions:
                         exes.add(root)
-                else:
-                    if os.access(full, os.X_OK):
-                        exes.add(entry)
+                elif os.access(full, os.X_OK):
+                    exes.add(entry)
         except OSError:
             continue
     return exes
 
-                    
 
+def get_executables_cached():
+    global _PATH_EXECUTABLES, _PATH_EXECUTABLES_TIMESTAMP
+    if _PATH_EXECUTABLES is None or (time.time() - _PATH_EXECUTABLES_TIMESTAMP) > _CACHE_TTL:
+        _PATH_EXECUTABLES = get_path_executables()
+        _PATH_EXECUTABLES_TIMESTAMP = time.time()
+    return _PATH_EXECUTABLES
+#5-41 executable cache
+
+
+ 
+#builtins 45-68
 def cd_function(user_inputs):
-    if not user_inputs:
-        os.chdir(os.path.expanduser("~"))
-        return
-
-    target = user_inputs[0]
-
-    target = os.path.expanduser(target)
-
+    target = os.path.expanduser(user_inputs[0]) if user_inputs else os.path.expanduser("~")
     if not os.path.isdir(target):
         sys.stderr.write(f"cd: {target}: No such file or directory\n")
-        return
+    else:
+        os.chdir(target)
 
-    os.chdir(target)
 
-
-def custom_user_inputs(user_inputs):
+def builtin_type(user_inputs):
     for user_input in user_inputs:
         if user_input in builtin_functions:
             sys.stdout.write(f"{user_input} is a shell builtin\n")
@@ -57,21 +63,34 @@ def custom_user_inputs(user_inputs):
         else:
             sys.stdout.write(f"{user_input}: not found\n")
 
+
 builtin_functions = {
-    "type": lambda user_inputs: custom_user_inputs(user_inputs),
+    "type": builtin_type,
     "exit": lambda user_inputs: sys.exit(0),
     "echo": lambda args: sys.stdout.write(" ".join(args) + "\n"),
     "pwd": lambda user_inputs: sys.stdout.write(f"{os.getcwd()}\n"),
     "cd": cd_function,
 }
+#builtins 45-68
 
-_EXECUTABLES = None
 
-def get_executables_cached():
-    global _EXECUTABLES
-    if _EXECUTABLES is None:
-        _EXECUTABLES = get_path_executables()
-    return _EXECUTABLES
+
+#completion 78-124
+def complete_path(text, dirs_only=False):
+    expanded = os.path.expanduser(os.path.expandvars(text)) if text else ""
+    pattern = (expanded + "*") if expanded else "*"
+    candidates = []
+    for match in sorted(glob.glob(pattern)):
+        is_dir = os.path.isdir(match)
+        if dirs_only and not is_dir:
+            continue
+        display = match
+        if text.startswith("~"):
+            display = "~" + match[len(os.path.expanduser("~")):]
+        display += "/" if is_dir else " "
+        candidates.append(display)
+    return candidates
+
 
 def command_completion(text, state):
     try:
@@ -84,161 +103,265 @@ def command_completion(text, state):
         if buffer.endswith(" "):
             tokens.append("")
 
-        completing_cmd = len(tokens) <= 1
-
-        if completing_cmd:
+        if len(tokens) <= 1:
             candidates = sorted(
-                b for b in (set(builtin_functions) | get_executables_cached())
-                if b.startswith(text)
+                name for name in (set(builtin_functions) | get_executables_cached())
+                if name.startswith(text)
             )
             if len(candidates) == 1:
                 candidates = [candidates[0] + " "]
         else:
-            cmd = tokens[0]
-            expanded = os.path.expanduser(os.path.expandvars(text)) if text else ""
-            pattern = (expanded + "*") if expanded else "*"
-            raw = sorted(glob.glob(pattern))
+            dirs_only = tokens[0] == "cd"
+            candidates = complete_path(text, dirs_only=dirs_only)
 
-            candidates = []
-            for match in raw:
-                display = match
-                if text.startswith("~"):
-                    home = os.path.expanduser("~")
-                    display = "~" + match[len(home):]
-                if os.path.isdir(match):
-                    display += "/"
-                else:
-                    display += " "
-                candidates.append(display)
-
-            if cmd == "cd":
-                candidates = [c for c in candidates if c.endswith("/")]
-
-        if state < len(candidates):
-            return candidates[state]
-        return None
+        return candidates[state] if state < len(candidates) else None
 
     except Exception:
         return None
 
+
 readline.set_completer(command_completion)
 readline.set_completer_delims(" \t\n")
 readline.parse_and_bind("tab: complete")
+#completion 78-124
 
-def split_redirection(tokens, ops):
-    for op, mode in ops:
-        if op in tokens:
-            pos = tokens.index(op)
-            if pos == len(tokens) - 1:
-                sys.stderr.write(f"syntax error: expected file after {op}\n")
-                return None, None, None
-            cleaned = tokens[:pos]
-            file = tokens[pos+1]
-            return cleaned, file, mode
-    return tokens, None, None
-            
+
+
+#parsing
+class ParseError(Exception):
+    pass
+
+def parse_line(line):
+    try:
+        raw_tokens = shlex.split(line)
+    except ValueError as e:
+        raise ParseError(str(e))
+
+    segments_raw = []
+    current = []
+    for tok in raw_tokens:
+        if tok == "|":
+            if not current:
+                raise ParseError("syntax error: empty command before |")
+            segments_raw.append(current)
+            current = []
+        else:
+            current.append(tok)
+
+    if not current:
+        if segments_raw:
+            raise ParseError("syntax error: empty command after |")
+    else:
+        segments_raw.append(current)
+        
+    redirect_ops = {
+        ">": (1, "w"),
+        "1>": (1, "w"),
+        ">>": (1, "a"),
+        "1>>": (1, "a"),
+        "2>": (2, "w"),
+        "2>>": (2, "a"),
+    }
+
+    segments = []
+    for raw in segments_raw:
+        tokens = []
+        redirects = []
+        i = 0
+        while i < len(raw):
+            tok = raw[i]
+            if tok in redirect_ops:
+                if i + 1 >= len(raw):
+                    raise ParseError(f"syntax error: expected file after {tok}")
+                fd, mode = redirect_ops[tok]
+                redirects.append((fd, mode, raw[i + 1]))
+                i += 2
+            else:
+                tokens.append(tok)
+                i += 1
+        if not tokens:
+            raise ParseError("syntax error: empty command in pipeline")
+        segments.append((tokens, redirects))
+
+    return segments
+#parsing
+
+
+
+#execution
+class RedirectContext:
+    def __init__(self, redirects):
+        self.redirects = redirects
+        self._open_files = []
+        self.saved = {}
+
+
+    def __enter__(self):
+        stream_map = {1: "stdout", 2: "stderr"}
+        for fd, mode, path in self.redirects:
+            f = open(path, mode, encoding="utf-8")
+            self._open_files.append(f)
+            attr = stream_map[fd]
+            self.saved[attr] = getattr(sys, attr)
+            setattr(sys, attr, f)
+        return self
+
+
+    def __exit__(self, *_):
+        for attr, original in self.saved.items():
+            setattr(sys, attr, original)
+        for f in self._open_files:
+            f.close()
+
+
+def execute_builtin(cmd, args, redirects):
+    with RedirectContext(redirects):
+        builtin_functions[cmd](args)
+
+
+def execute_external(cmd, args, redirects):
+    path = shutil.which(cmd)
+    if not path:
+        sys.stderr.write(f"{cmd}: command not found\n")
+        return
+
+    stdout_target = subprocess.PIPE
+    stderr_target = subprocess.PIPE
+    open_files = []
+
+    try:
+        for fd, mode, filepath in redirects:
+            f = open(filepath, mode, encoding="utf-8")
+            open_files.append(f)
+            if fd == 1:
+                stdout_target = f
+            elif fd == 2:
+                stderr_target = f
+
+        result = subprocess.run(
+            [cmd] + args,
+            stdout=stdout_target,
+            stderr=stderr_target,
+            text=True,
+            errors="replace"
+        )
+    finally:
+        for f in open_files:
+            f.close()
+
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+
+
+def execute_pipeline(segments):
+    processes = []
+    prev_read_fd = None
+
+    for i, (tokens, redirects) in enumerate(segments):
+        cmd, args = tokens[0], tokens[1:]
+        is_last = (i == len(segments) - 1)
+        is_first = (i == 0)
+
+        path = shutil.which(cmd)
+        if not path:
+            sys.stderr.write(f"{cmd}: command not found\n")
+            if prev_read_fd:
+                prev_read_fd.close()
+            for proc in processes:
+                proc.kill()
+                proc.wait()
+            return
+
+        stdin_source = prev_read_fd if not is_first else None
+
+        stdout_target = None if is_last else subprocess.PIPE
+
+        open_files = []
+        for fd, mode, filepath in redirects:
+            f = open(filepath, mode, encoding = "utf-8")
+            open_files.append((fd, f))
+            if fd == 1 and is_last:
+                stdout_target = f
+            elif fd == 2:
+                sys.stderr_target = f
+
+        try:
+            proc = subprocess.Popen(
+                [cmd] + args,
+                stdin=stdin_source,
+                stdout=stdout_target,
+                stderr=None,
+                text=True,
+                errors="replace",
+            )
+        
+        except Exception as e:
+            sys.stderr.write(f"{cmd}: {e}\n")
+            if prev_read_fd:
+                prev_read_fd.close()
+            for proc in process:
+                proc.kill()
+                proc.wait()
+            return
+
+        if prev_read_fd:
+            prev_read_fd.close()
+
+        process.append((proc, open_files))
+        prev_read_fd = proc.stdout
+
+    for proc, open_files in processes:
+        proc.wait()
+        for fd, f in open_files:
+            f.close()
+
+
+
+def execute(segments):
+    if len(segments) == 1:
+        tokens, redirects = segments[0]
+        execute_single(tokens, redirects)
+    else:
+        execute_pipeline(segments)
+
+
+def execute_single(tokens, redirects):
+    if not tokens:
+        return
+    cmd, args = tokens[0], tokens[1:]
+    if cmd in builtin_functions:
+        execute_builtin(cmd, args, redirects)
+    else:
+        execute_external(cmd, args, redirects)
+#execution 
+
+
+
+#main loop 248-269
 def run_cli():
     while True:
         try:
-            user_inputs = input("$ ")
-            
-            try:
-                user_inputs = shlex.split(user_inputs)
-            except ValueError as e:
-                sys.stderr.write(f"parse error: {e}\n")
-                continue
-
-            user_inputs, out_file, out_mode = split_redirection(
-                user_inputs, [(">", "w"), ("1>", "w"), (">>", "a"), ("1>>", "a")])
-            if user_inputs is None:
-                continue
-
-            user_inputs, err_file, err_mode = split_redirection(
-                user_inputs, [("2>", "w"), ("2>>", "a")])
-            if user_inputs is None:
-                continue
-
-            if len(user_inputs) == 0:
-                continue
-            
-            cmd = user_inputs[0]
-            args = user_inputs[1:]
-
-            if cmd in builtin_functions:
-                old_stdout = sys.stdout
-                old_stderr = sys.stderr
-
-                out_f = None
-                err_f = None
-
-                try:
-                    if out_file:
-                        out_f = open(out_file, out_mode, encoding="utf-8")
-                        sys.stdout = out_f
-
-                    if err_file:
-                        err_f = open(err_file, err_mode, encoding ="utf-8")
-                        sys.stderr = err_f
-
-                    builtin_functions[cmd](args)
-
-                finally:
-                    sys.stdout = old_stdout
-                    sys.stderr = old_stderr
-                    if out_f:
-                        out_f.close()
-                    if err_f:
-                        err_f.close()
-
-                continue
-
-
-            path = shutil.which(cmd)
-            if not path:
-                sys.stderr.write(f"{cmd}: command not found\n")
-                continue
-            
-
-            out_handle = None
-            err_handle = None
-
-            try:
-                stdout_target = subprocess.PIPE
-                stderr_target = subprocess.PIPE
-
-                if out_file:
-                    out_handle = open(out_file, out_mode, encoding="utf-8")
-                    stdout_target = out_handle
-
-                if err_file:
-                    err_handle = open(err_file, err_mode, encoding="utf-8")
-                    stderr_target = err_handle
-
-                result = subprocess.run(
-                    [cmd] + args,
-                    stdout=stdout_target,
-                    stderr=stderr_target,
-                    text=True,
-                    errors="replace"
-                )
-
-            finally:
-                if out_handle:
-                    out_handle.close()
-                if err_handle:
-                    err_handle.close()
-
-            if result.stdout:
-                sys.stdout.write(result.stdout)
-            if result.stderr:
-                sys.stderr.write(result.stderr)
-
+            user_inputs = input("$ ") 
         except EOFError:
             sys.stdout.write("\n")
             break
         except KeyboardInterrupt:
             sys.stdout.write("\n")
             continue
+
+        if not user_inputs.strip():
+            continue
+
+        try:
+            segments = parse_line(user_inputs)
+        except ParseError as e:
+            sys.stderr.write(f"parse error: {e}\n")
+            continue
+
+        execute(segments)
+#main loop 248-269
 
 
 
