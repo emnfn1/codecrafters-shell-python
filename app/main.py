@@ -1,9 +1,13 @@
 ﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io
 
+from numpy import append
 
 
+
+#HISTORY
 HISTORY_FILE = os.path.expanduser("~/.myshell_history")
 HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
+HISTORY_EXIT_MODE = "write"
 
 def setup_history():
     global _SESSION_HISTORY_START
@@ -22,10 +26,25 @@ def setup_history():
 
 
 def save_history():
+    if HISTORY_EXIT_MODE == "append":
+        append_session_to_file(HISTORY_FILE)
+    else:
+        try:
+            readline.write_history_file(HISTORY_FILE)
+        except OSError:
+            pass
+
+def append_session_to_file(filepath):
     try:
-        readline.write_history_file(HISTORY_FILE)
-    except OSError:
-        pass
+        total = readline.get_current_history_length()
+        with open(filepath, "a", encoding="utf-8") as f:
+            for i in range(_SESSION_HISTORY_START + 1, total + 1):
+                entry = readline.get_history_item(i)
+                if entry:
+                    f.write(entry + "\n")
+    except OSError as e:
+        sys.stderr.write(f"history: {e}\n")
+#HISTORY
 
 
 
@@ -73,6 +92,29 @@ def get_executables_cached():
  
 #builtins
 def builtin_history(args):
+    if args and args[0] in ("-r", "-w", "-a"):
+        flag = args[0]
+        if len(args) < 2:
+            sys.stderr.write(f"history: {flag} requires a filepath\n")
+            return
+        filepath = args[1]
+
+        if flag == "-r":
+            try:
+                readline.read_history_file(filepath)
+            except OSError as e:
+                sys.stderr.write(f"history: cannot read {filepath}: {e}\n")
+
+        elif flag == "-w":
+            try:
+                readline.write_history_file(filepath)
+            except OSError as e:
+                sys.stderr.write(f"history: cannot write to {filepath}: {e}\n")
+
+        elif flag == "-a":
+            append_session_to_file(filepath)
+        return
+
     if args and args[0] == "-c":
         readline.clear_history()
         return
@@ -85,7 +127,7 @@ def builtin_history(args):
                 sys.stderr.write("history: limit must be a positive integer\n")
                 return
         except ValueError:
-            sys.stderr.write(f"history: {args[0]}: numeric argument required\n")
+            sys.stderr.write(f"history: {args[0]}: invalid option\n")
             return
 
     total = readline.get_current_history_length()
