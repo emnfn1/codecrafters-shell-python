@@ -269,14 +269,16 @@ def execute_pipeline(segments):
             sys.stderr.write(f"{cmd}: command not found\n")
             if prev_read_fd:
                 prev_read_fd.close()
-            for proc in processes:
+            for proc, open_files in processes:
                 proc.kill()
                 proc.wait()
+                for fd, f in open_files:
+                    f.close()
             return
 
         stdin_source = prev_read_fd if not is_first else None
-
         stdout_target = None if is_last else subprocess.PIPE
+        stderr_target = None
 
         open_files = []
         for fd, mode, filepath in redirects:
@@ -285,14 +287,14 @@ def execute_pipeline(segments):
             if fd == 1 and is_last:
                 stdout_target = f
             elif fd == 2:
-                sys.stderr_target = f
+                stderr_target = f
 
         try:
             proc = subprocess.Popen(
                 [cmd] + args,
                 stdin=stdin_source,
                 stdout=stdout_target,
-                stderr=None,
+                stderr=stderr_target,
                 text=True,
                 errors="replace",
             )
@@ -301,15 +303,17 @@ def execute_pipeline(segments):
             sys.stderr.write(f"{cmd}: {e}\n")
             if prev_read_fd:
                 prev_read_fd.close()
-            for proc in process:
+            for proc, open_files in processes:
                 proc.kill()
                 proc.wait()
+                for fd, f in open_files:
+                    f.close()
             return
 
         if prev_read_fd:
             prev_read_fd.close()
 
-        process.append((proc, open_files))
+        processes.append((proc, open_files))
         prev_read_fd = proc.stdout
 
     for proc, open_files in processes:
