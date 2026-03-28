@@ -94,12 +94,13 @@ def builtin_history(args):
     for i in range(_SESSION_HISTORY_START + 1, total + 1):
         entry = readline.get_history_item(i)
         if entry:
-            session_entries.append(entry)
+            session_number = i - _SESSION_HISTORY_START
+            session_entries.append((session_number, entry))
 
     if limit is not None:
         session_entries = session_entries[-limit:]
 
-    for n, entry in enumerate(session_entries, start = 1):
+    for n, entry in session_entries:
         sys.stdout.write(f"  {n:4}  {entry}\n")
 
 
