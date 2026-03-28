@@ -6,6 +6,8 @@
 HISTORY_FILE = os.path.expanduser("~/.myshell_history")
 HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
 HISTORY_EXIT_MODE = "write"
+_SESSION_HISTORY_START = 0
+_LAST_APPENDED = 0
 
 def setup_history():
     global _SESSION_HISTORY_START
@@ -39,13 +41,16 @@ def save_history():
             pass
 
 def append_session_to_file(filepath):
+    global _LAST_APPENDED
     try:
         total = readline.get_current_history_length()
+        start = max(_SESSION_HISTORY_START + 1, _LAST_APPENDED + 1)
         with open(filepath, "a", encoding="utf-8") as f:
-            for i in range(_SESSION_HISTORY_START + 1, total + 1):
+            for i in range(start, total + 1):
                 entry = readline.get_history_item(i)
                 if entry:
                     f.write(entry + "\n")
+        _LAST_APPENDED = total
     except OSError as e:
         sys.stderr.write(f"history: {e}\n")
 #HISTORY
