@@ -1,5 +1,4 @@
-﻿from multiprocessing import process
-import sys, shutil, os, subprocess, shlex, readline, glob, time
+﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io
 
 
 
@@ -219,6 +218,26 @@ def execute_builtin(cmd, args, redirects):
         builtin_functions[cmd](args)
 
 
+def capture_builtin(cmd, args):
+    buf = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = buf
+    try:
+        builtin_functions[cmd](args)
+    finally:
+        sys.stdout = old_stdout
+    return buf.getvalue()
+
+
+def run_builtin_with_stdin(cmd, args, stdin_text, redirects):
+    with RedirectContext(redirects):
+        old_stdin = sys.stdin
+        sys.stdin = io.StringIO(stdin_text) if stdin_text else sys.stdin
+        try:
+            builtin_functions[cmd](args)
+        finally:
+            sys.stdin = old_stdin
+
 def execute_external(cmd, args, redirects):
     path = shutil.which(cmd)
     if not path:
@@ -258,14 +277,40 @@ def execute_external(cmd, args, redirects):
 def execute_pipeline(segments):
     processes = []
     prev_read_fd = None
+    prev_builtin_out = None
 
     for i, (tokens, redirects) in enumerate(segments):
         cmd, args = tokens[0], tokens[1:]
         is_last = (i == len(segments) - 1)
         is_first = (i == 0)
+        is_builtin = cmd in builtin_functions
 
-        path = shutil.which(cmd)
-        if not path:
+        if is_builtin:
+            if not is_last:
+                if prev_read_fd:
+                    prev_read_fd.close()
+                    prev_read_fd = None
+                prev_builtin_out = capture_builtin(cmd, args)
+            else:
+                if prev_read_fd:
+                    stdin_text = prev_read_fd.read()
+                    prev_read_fd.close()
+                    prev_read_fd = None
+                elif prev_builtin_out is not None:
+                    stdin_text = prev_builtin_out
+                    prev_builtin_out = None
+                else:
+                    stdin_text = None
+
+                run_builtin_with_stdin(cmd, args, stdin_text, redirects)
+
+                for proc, open_files in processes:
+                    proc.wait()
+                    for fd, f in open_files:
+                        f.close()
+            continue
+
+        if not shutil.which(cmd):
             sys.stderr.write(f"{cmd}: command not found\n")
             if prev_read_fd:
                 prev_read_fd.close()
@@ -276,7 +321,13 @@ def execute_pipeline(segments):
                     f.close()
             return
 
-        stdin_source = prev_read_fd if not is_first else None
+        if prev_builtin_out is not None:
+            stdin_source = subprocess.PIPE
+        elif prev_read_fd is not None:
+            stdin_source = prev_read_fd
+        else:
+            stdin_source = None
+
         stdout_target = None if is_last else subprocess.PIPE
         stderr_target = None
 
@@ -309,6 +360,11 @@ def execute_pipeline(segments):
                 for fd, f in open_files:
                     f.close()
             return
+        
+        if prev_builtin_out is not None:
+            proc.stdin.write(prev_builtin_out)
+            proc.stdin.close()
+            prev_builtin_out = None
 
         if prev_read_fd:
             prev_read_fd.close()
