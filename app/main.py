@@ -1,16 +1,19 @@
-﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io
+﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit
+from turtle import mode
 
 
 
-#HISTORY
+#GLOBALS
 HISTORY_FILE = os.environ.get("HISTFILE", os.path.expanduser("~/.my_shell_history"))
 HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
 HISTORY_EXIT_MODE = "write"
-_SESSION_HISTORY_START = 0
-_LAST_APPENDED = 0
+_LAST_EXIT_CODE = 0
+
 
 def setup_history():
     global _SESSION_HISTORY_START
+    _SESSION_HISTORY_START = 0
+    _LAST_APPENDED = 0
     readline.set_history_length(HISTORY_MAX)
 
     if os.path.exists(HISTORY_FILE):
@@ -21,7 +24,6 @@ def setup_history():
 
     _SESSION_HISTORY_START = 0
 
-    import atexit
     atexit.register(save_history)
 
 
@@ -251,23 +253,6 @@ def parse_line(line):
     except ValueError as e:
         raise ParseError(str(e))
 
-    segments_raw = []
-    current = []
-    for tok in raw_tokens:
-        if tok == "|":
-            if not current:
-                raise ParseError("syntax error: empty command before |")
-            segments_raw.append(current)
-            current = []
-        else:
-            current.append(tok)
-
-    if not current:
-        if segments_raw:
-            raise ParseError("syntax error: empty command after |")
-    else:
-        segments_raw.append(current)
-        
     redirect_ops = {
         ">": (1, "w"),
         "1>": (1, "w"),
@@ -277,27 +262,67 @@ def parse_line(line):
         "2>>": (2, "a"),
     }
 
-    segments = []
-    for raw in segments_raw:
-        tokens = []
-        redirects = []
-        i = 0
-        while i < len(raw):
-            tok = raw[i]
-            if tok in redirect_ops:
-                if i + 1 >= len(raw):
-                    raise ParseError(f"syntax error: expected file after {tok}")
-                fd, mode = redirect_ops[tok]
-                redirects.append((fd, mode, raw[i + 1]))
-                i += 2
-            else:
-                tokens.append(tok)
-                i += 1
-        if not tokens:
-            raise ParseError("syntax error: empty command in pipeline")
-        segments.append((tokens, redirects))
+    chain_splits = []
+    current = []
+    current_op = None
+    list_ops = {"&&", "||", ";"}
 
-    return segments
+    for tok in raw_tokens:
+        if tok in list_ops:
+            if not current:
+                raise ParseError(f"syntax error: empty command before {tok}")
+            chain_splits.append((current_op, current))
+            current_op = tok
+            current = []
+        else:
+            current.append(tok)
+
+    if not current:
+        if chain_splits:
+            raise ParseError(f"syntax error: empty command after {chain_splits[-1][0]}")
+    else:
+        chain_splits.append((current_op, current))
+
+    def parse_pipeline(chain_tokens):
+        segments_raw = []
+        current = []
+        for tok in chain_tokens:
+            if tok  == "|":
+                if not current:
+                    raise ParseError("syntax error: empty command before |")
+                segments_raw.append(current)
+                current = []
+            else:
+                current.append(tok)
+        if not current:
+            if segments_raw:
+                raise ParseError("syntax error: empty command after |")
+        else:
+            segments_raw.append(current)
+
+        segments = []
+        for raw in segments_raw:
+            tokens = []
+            redirects = []
+            i = 0
+            while i < len(raw):
+                tok = raw[i]
+                if tok in redirect_ops:
+                    if i + 1 >= len(raw):
+                        raise ParseError(f"syntax error: expected file after {tok}")
+                    fd, mode = redirect_ops[tok]
+                    redirects.append((fd, mode, raw[i + 1]))
+                    i += 2
+                else:
+                    tokens.append(tok)
+                    i += 1
+            if not tokens:
+                raise ParseError("syntax error: empty command in pipeline")
+            segments.append((tokens, redirects))
+
+        return segments
+
+    return [(op, parse_pipeline(chain)) for op, chain in chain_splits]
 #parsing
 
 
@@ -358,10 +383,10 @@ def execute_external(cmd, args, redirects):
     path = shutil.which(cmd)
     if not path:
         sys.stderr.write(f"{cmd}: command not found\n")
-        return
+        return 127
 
-    stdout_target = subprocess.PIPE
-    stderr_target = subprocess.PIPE
+    stdout_target = None
+    stderr_target = None
     open_files = []
 
     try:
@@ -380,14 +405,12 @@ def execute_external(cmd, args, redirects):
             text=True,
             errors="replace"
         )
+        return result.returncode
+
     finally:
         for f in open_files:
             f.close()
 
-    if result.stdout:
-        sys.stdout.write(result.stdout)
-    if result.stderr:
-        sys.stderr.write(result.stderr)
 
 
 def execute_pipeline(segments):
@@ -398,7 +421,6 @@ def execute_pipeline(segments):
     for i, (tokens, redirects) in enumerate(segments):
         cmd, args = tokens[0], tokens[1:]
         is_last = (i == len(segments) - 1)
-        is_first = (i == 0)
         is_builtin = cmd in builtin_functions
 
         if is_builtin:
@@ -490,26 +512,36 @@ def execute_pipeline(segments):
 
     for proc, open_files in processes:
         proc.wait()
+        last_code = proc.returncode
         for fd, f in open_files:
             f.close()
+    return last_code
 
 
-def execute(segments):
-    if len(segments) == 1:
-        tokens, redirects = segments[0]
-        execute_single(tokens, redirects)
-    else:
-        execute_pipeline(segments)
+def execute(chains):
+    global _LAST_EXIT_CODE
+
+    for op, segments in chains:
+        if op == "&&" and _LAST_EXIT_CODE != 0:
+            continue
+        if op == "||" and _LAST_EXIT_CODE == 0:
+            continue
+        if len(segments) == 1:
+            tokens, redirects = segments[0]
+            _LAST_EXIT_CODE = execute_single(tokens, redirects)
+        else:
+            _LAST_EXIT_CODE = execute_pipeline(segments)
 
 
 def execute_single(tokens, redirects):
     if not tokens:
-        return
+        return 0
     cmd, args = tokens[0], tokens[1:]
     if cmd in builtin_functions:
         execute_builtin(cmd, args, redirects)
+        return 0
     else:
-        execute_external(cmd, args, redirects)
+        return execute_external(cmd, args, redirects)
 #execution 
 
 
@@ -530,6 +562,8 @@ def run_cli():
 
         if not user_inputs.strip():
             continue
+
+        user_inputs = user_inputs.replace("$?", str(_LAST_EXIT_CODE))
 
         last = readline.get_history_item(readline.get_current_history_length())
         if user_inputs != last:
