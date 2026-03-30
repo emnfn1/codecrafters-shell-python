@@ -1,5 +1,7 @@
 ﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit, re
 
+from numpy import std
+
 
 
 #GLOBALS
@@ -108,6 +110,25 @@ def expand_variables(token: str) -> str:
     token = re.sub(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}', lookup, token)
     token = re.sub(r'\$([A-Za-z_][A-Za-z0-9_]*)', lookup, token)
     return token
+
+
+def expand_command_substitution(line: str) -> str:
+    def run_substitution(match):
+        inner = match.group(1).strip()
+        if not inner:
+            return ""
+        try:
+            result = subprocess.run(
+                inner,
+                shell=True,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                )
+            return result.stdout.rstrip("\n")
+        except Exception:
+            return ""
+    return re.sub(r'\$\((.+?)\)', run_substitution, line)
 #executable cache
 
 
@@ -250,6 +271,7 @@ def builtin_source(args):
                     continue
                 line = line.replace("$?", str(_LAST_EXIT_CODE))
                 line = expand_variables(line)
+                line = expand_command_substitution(line)
                 try:
                     chains = parse_line(line)
                     execute(chains)
@@ -356,6 +378,7 @@ def parse_line(line):
         "1>>": (1, "a"),
         "2>": (2, "w"),
         "2>>": (2, "a"),
+        "<": (0, "r"),
     }
 
     chain_splits = []
@@ -432,7 +455,7 @@ class RedirectContext:
 
 
     def __enter__(self):
-        stream_map = {1: "stdout", 2: "stderr"}
+        stream_map = {0: "stdin", 1: "stdout",  2: "stderr"}
         for fd, mode, path in self.redirects:
             f = open(path, mode, encoding="utf-8")
             self._open_files.append(f)
@@ -483,19 +506,23 @@ def execute_external(cmd, args, redirects):
 
     stdout_target = None
     stderr_target = None
+    stdin_target = None
     open_files = []
 
     try:
         for fd, mode, filepath in redirects:
             f = open(filepath, mode, encoding="utf-8")
             open_files.append(f)
-            if fd == 1:
+            if fd == 0:
+                stdin_target = f
+            elif fd == 1:
                 stdout_target = f
             elif fd == 2:
                 stderr_target = f
 
         result = subprocess.run(
             [cmd] + args,
+            stdin=stdin_target,
             stdout=stdout_target,
             stderr=stderr_target,
             text=True,
@@ -681,6 +708,7 @@ def run_cli():
 
         user_inputs = user_inputs.replace("$?", str(_LAST_EXIT_CODE))
         user_inputs = expand_variables(user_inputs)
+        user_inputs = expand_command_substitution(user_inputs)
 
         last = readline.get_history_item(readline.get_current_history_length())
         if user_inputs != last:
