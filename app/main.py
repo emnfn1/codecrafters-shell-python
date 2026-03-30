@@ -7,10 +7,12 @@ HISTORY_FILE = os.environ.get("HISTFILE", os.path.expanduser("~/.my_shell_histor
 HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
 HISTORY_EXIT_MODE = "write"
 _LAST_EXIT_CODE = 0
+_SESSION_HISTORY_START = 0
+_LAST_APPENDED = 0
 
 
 def setup_history():
-    global _SESSION_HISTORY_START
+    global _SESSION_HISTORY_START, _LAST_APPENDED
     _SESSION_HISTORY_START = 0
     _LAST_APPENDED = 0
     readline.set_history_length(HISTORY_MAX)
@@ -20,8 +22,6 @@ def setup_history():
             readline.read_history_file(HISTORY_FILE)
         except OSError:
             pass
-
-    _SESSION_HISTORY_START = 0
 
     atexit.register(save_history)
 
