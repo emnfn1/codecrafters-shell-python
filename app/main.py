@@ -98,7 +98,7 @@ def get_executables_cached():
         _PATH_EXECUTABLES_TIMESTAMP = time.time()
     return _PATH_EXECUTABLES
 
-def expand_variables(tokens: str) -> str:
+def expand_variables(token: str) -> str:
     def lookup(match):
         name = match.group(1) or match.group(2)
         if name in _SHELL_VARS:
