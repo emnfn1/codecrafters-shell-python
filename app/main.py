@@ -656,8 +656,8 @@ def build_prompt() -> str:
     cwd = os.getcwd()
     home = os.path.expanduser("~")
     if cwd.startswith(home):
-        cmd = "~" + cwd[len(home):]
-    return f"{cmd} $ "
+        cwd = "~" + cwd[len(home):]
+    return f"{cwd} $ "
 
 #main loop
 def run_cli():
