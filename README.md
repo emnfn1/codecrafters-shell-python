@@ -11,24 +11,50 @@ REPLs, builtin commands, and more.
 **Note**: If you're viewing this repo on GitHub, head over to
 [codecrafters.io](https://codecrafters.io) to try the challenge.
 
-# Passing the first stage
+## Myshell
 
-The entry point for your `shell` implementation is in `app/main.py`. Study and
-uncomment the relevant code, then run the command below to execute the tests on
-our servers:
+A Unix shell written in Python. Built from scratch as a learning project. I started the project using codecrafters.io's "Build your own Shell" course and added more features after the course.
 
-```sh
-codecrafters submit
-```
+## Features
 
-Time to move on to the next stage!
+- **Pipelines** — `cmd1 | cmd2 | cmd3`
+- **Redirections** — `>`, `>>`, `2>`, `2>>`, `<`
+- **Logical operators** — `&&`, `||`, `;`
+- **Background jobs** — `cmd &`, `jobs`, `fg`, `bg`
+- **Variables** — `name=value`, `$VAR`, `${VAR}`, `export`, `unset`
+- **Command substitution** — `echo "today is $(date)"`
+- **Tab completion** — commands and file paths
+- **History** — persistent across sessions, `history`, `history -r/-w/-a`
+- **Aliases** — `alias ll="ls -la"`, `unalias`
+- **Source** — `source ~/.myshellrc` or `. ~/.myshellrc`
+- **Dynamic prompt** — configure via `PS1`
+- **Exit codes** — `$?` after every command
 
-# Stage 2 & beyond
+## Builtins
 
-Note: This section is for stages 2 and beyond.
+`cd`, `echo`, `pwd`, `type`, `exit`, `history`, `export`, `unset`,
+`alias`, `unalias`, `source`, `.`, `jobs`, `fg`, `bg`
 
-1. Ensure you have `uv` installed locally
-1. Run `./your_program.sh` to run your program, which is implemented in
-   `app/main.py`.
-1. Run `codecrafters submit` to submit your solution to CodeCrafters. Test
-   output will be streamed to your terminal.
+## Limitations
+
+- No scripting (`if`/`for`/`while`/functions)
+- No here-docs (`<<EOF`)
+- No arithmetic expansion (`$(( ))`)
+- No arrays
+- Job control (`fg`/`bg`) works on Linux/macOS only
+
+## History
+
+History is stored in `~/.myshell_history` by default.
+Override with the `HISTFILE` environment variable:
+```bash
+HISTFILE=~/my_history myshell
+
+| Command | Effect |
+|---|---|
+| `history` | Show session history |
+| `history 10` | Show last 10 entries |
+| `history -w file` | Write history to file |
+| `history -r file` | Read history from file |
+| `history -a file` | Append new entries to file |
+| `history -c` | Clear history |

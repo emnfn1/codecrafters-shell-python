@@ -1,10 +1,11 @@
-﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit, re
+﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit, re, signal
+
 
 
 #GLOBALS
 HISTORY_FILE = os.environ.get("HISTFILE", os.path.expanduser("~/.my_shell_history"))
-HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
-HISTORY_EXIT_MODE = "write"
+HISTORY_MAX = 1000 #amx history entries kept in memory
+HISTORY_EXIT_MODE = "write" 
 _LAST_EXIT_CODE = 0
 _SESSION_HISTORY_START = 0
 _LAST_APPENDED = 0
@@ -14,6 +15,8 @@ _JOBS: dict[int, dict] = {}
 _JOB_COUNTER = 0
 
 
+
+#History
 def setup_history():
     global _SESSION_HISTORY_START, _LAST_APPENDED
     _SESSION_HISTORY_START = 0
@@ -43,6 +46,7 @@ def save_history():
         except OSError:
             pass
 
+
 def append_session_to_file(filepath):
     global _LAST_APPENDED
     try:
@@ -56,11 +60,10 @@ def append_session_to_file(filepath):
         _LAST_APPENDED = total
     except OSError as e:
         sys.stderr.write(f"history: {e}\n")
-#HISTORY
 
 
-
-#zaman bazlı invalidasyon 60 saniyede bir #path executable tarama yapıyor. executable cache
+#Executable cache
+#scans path at most once every minute
 _PATH_EXECUTABLES = None
 _PATH_EXECUTABLES_TIMESTAMP = 0
 _CACHE_TTL = 60
@@ -99,7 +102,15 @@ def get_executables_cached():
         _PATH_EXECUTABLES_TIMESTAMP = time.time()
     return _PATH_EXECUTABLES
 
+
+
+#expansion
 def expand_variables(token: str) -> str:
+    """
+    Expands shell variables in the given token. Supports both $VAR and ${VAR} syntax.
+    Checks shell variables defined in _SHELL_VARS first, then falls back to environment variables. 
+    If a variable is not found, it is replaced with an empty string.
+    """
     def lookup(match):
         name = match.group(1) or match.group(2)
         if name in _SHELL_VARS:
@@ -112,6 +123,10 @@ def expand_variables(token: str) -> str:
 
 
 def expand_command_substitution(line: str) -> str:
+    """
+    Expands command substitutions in the given line. 
+    Finds all occurrences of $(...) and replaces them with the output of the command inside.
+    """
     def run_substitution(match):
         inner = match.group(1).strip()
         if not inner:
@@ -142,15 +157,19 @@ def register_job(proc, cmd_string: str) -> int:
 
 
 def reap_jobs():
+    """
+    Checks the status of background jobs and updates their status to "done" if they have finished.
+    Called before each prompt to ensure the user sees updated job statuses
+    """
     for jid, job in list(_JOBS.items()):
         if job["status"] == "running" and job["proc"].poll() is not None:
             job["status"] = "done"
             sys.stdout.write(f"\n[{jid}] Done    {job['cmd']}\n")
-#executable cache
+
 
 
  
-#builtins
+#Builtins
 def builtin_history(args):
     if args and args[0] in ("-r", "-w", "-a"):
         flag = args[0]
@@ -322,7 +341,6 @@ def builtin_fg(args):
 
 
 def builtin_bg(args):
-    import signal
     jid = _resolve_job_id(args)
     if jid is None:
         return
@@ -357,7 +375,6 @@ def _resolve_job_id(args) -> int | None:
     return max(_JOBS.keys())
 
 
-
 def builtin_type(user_inputs):
     for user_input in user_inputs:
         if user_input in builtin_functions:
@@ -384,12 +401,11 @@ builtin_functions = {
     "jobs": builtin_jobs,
     "fg": builtin_fg,
     "bg": builtin_bg,
-}
-#builtins 
+} 
 
 
 
-#completion 
+#Completion 
 def complete_path(text, dirs_only=False):
     expanded = os.path.expanduser(os.path.expandvars(text)) if text else ""
     pattern = (expanded + "*") if expanded else "*"
@@ -437,11 +453,16 @@ def command_completion(text, state):
 readline.set_completer(command_completion)
 readline.set_completer_delims(" \t\n")
 readline.parse_and_bind("tab: complete")
-#completion 
 
 
 
-#parsing
+#Parsing
+"""
+The parser splits the input into chains based on &&, ||, and ;. 
+Each chain is then split into pipeline segments by |. 
+Each segment is parsed for tokens and redirections. 
+The parser also checks for syntax errors like empty commands or missing files after redirection operators.
+"""
 class ParseError(Exception):
     pass
 
@@ -534,11 +555,10 @@ def parse_line(line):
 
     chains = [(op, parse_pipeline(chain)) for op, chain in chain_splits]
     return chains, background
-#parsing
 
 
 
-#execution
+#Execution
 class RedirectContext:
     def __init__(self, redirects):
         self.redirects = redirects
@@ -734,6 +754,11 @@ def execute_pipeline(segments):
 
 
 def execute(chains, background: bool = False):
+    """
+    Executes the parsed command chains. 
+    Handles the logic for &&, ||, and ; operators to determine which chains to execute based on the exit code of previous commands. 
+    If background is True, runs the entire command line in the background without waiting for it to finish.
+    """
     global _LAST_EXIT_CODE
 
     if background:
@@ -796,10 +821,16 @@ def execute_single(tokens, redirects):
         return 0
     else:
         return execute_external(cmd, args, redirects)
-#execution 
 
 
+
+#Prompt
 def build_prompt() -> str:
+    """
+    Builds the shell prompt.
+    Uses PS1 if set (supporting \w and \W for current directory), otherwise defaults to "$ ".)
+    Set PS1='\\w $ ' in ~/.myshellrc for a dynamic cwd prompt.
+    """
     ps1 = os.environ.get("PS1") or _SHELL_VARS.get("PS1")
     if ps1:
         cwd = os.getcwd()
@@ -809,9 +840,22 @@ def build_prompt() -> str:
         return ps1.replace(r"\w", cwd).replace(r"\W", os.path.basename(cwd))
     return "$ "
 
-#main loop
+
+
+def _load_rc():
+    """
+    Loads the ~/.myshellrc file if it exists.
+    """
+    rc = os.path.expanduser("~/.myshellrc")
+    if os.path.isfile(rc):
+        builtin_source([rc])
+
+
+
+#Main loop
 def run_cli():
     setup_history()
+    _load_rc()
 
     while True:
         reap_jobs()
@@ -842,7 +886,6 @@ def run_cli():
             continue
 
         execute(chains, background)
-#main loop 
 
 
 
