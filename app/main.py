@@ -10,6 +10,8 @@ _SESSION_HISTORY_START = 0
 _LAST_APPENDED = 0
 _SHELL_VARS: dict[str, str] = {}
 _ALIASES: dict[str, str] = {}
+_JOBS: dict[int, dict] = {}
+_JOB_COUNTER = 0
 
 
 def setup_history():
@@ -126,6 +128,24 @@ def expand_command_substitution(line: str) -> str:
         except Exception:
             return ""
     return re.sub(r'\$\((.+?)\)', run_substitution, line)
+
+
+def register_job(proc, cmd_string: str) -> int:
+    global _JOB_COUNTER
+    _JOB_COUNTER += 1
+    _JOBS[_JOB_COUNTER] = {
+        "proc": proc, 
+        "cmd": cmd_string,
+        "status": "running",
+    }
+    return _JOB_COUNTER
+
+
+def reap_jobs():
+    for jid, job in list(_JOBS.items()):
+        if job["status"] == "running" and job["proc"].poll() is not None:
+            job["status"] = "done"
+            sys.stdout.write(f"\n[{jid}] Done    {job['cmd']}\n")
 #executable cache
 
 
@@ -270,12 +290,72 @@ def builtin_source(args):
                 line = expand_variables(line)
                 line = expand_command_substitution(line)
                 try:
-                    chains = parse_line(line)
-                    execute(chains)
+                    chains, background = parse_line(line)
+                    execute(chains, background)
                 except ParseError as e:
                     sys.stderr.write(f"source: parse error in {path}: {e}\n")
     except OSError as e:
         sys.stderr.write(f"source: {e}\n")
+
+
+def builtin_jobs(args):
+    if not _JOBS:
+        return
+    for jid, job in sorted(_JOBS.items()):
+        status = "Running" if job["proc"].poll() is None else "Done"
+        job["status"] = status.lower()
+        sys.stdout.write(f"[{jid}] {status}    {job['cmd']}\n")
+
+
+def builtin_fg(args):
+    jid = _resolve_job_id(args)
+    if jid is None:
+        return
+    job = _JOBS[jid]
+    if job["proc"].poll() is not None:
+        sys.stderr.write(f"fg: job {jid} has already finished\n")
+        return
+    sys.stdout.write(f"{job['cmd']}\n")
+    job["proc"].wait()
+    job["status"] = "done"
+    del _JOBS[jid]
+
+
+def builtin_bg(args):
+    import signal
+    jid = _resolve_job_id(args)
+    if jid is None:
+        return
+    job = _JOBS[jid]
+    if job["proc"].poll() is not None:
+        sys.stderr.write(f"bg: job {jid} has already finished\n")
+        return
+    try:
+        os.kill(job["proc"].pid, signal.SIGCONT)
+        job["status"] = "running"
+        sys.stdout.write(f"[{jid}] {job['cmd']} &\n")
+    except (ProcessLookupError, AttributeError):
+        sys.stderr.write(f"bg: could not resume job {jid}\n")
+
+
+def _resolve_job_id(args) -> int | None:
+    if not _JOBS:
+        sys.stderr.write("no current jobs\n")
+        return None
+    if args:
+        jid_str = args[0].lstrip("%")
+        try:
+            jid = int(jid_str)
+        except ValueError:
+            sys.stderr.write(f"invalid job id: {args[0]}\n")
+            return None
+
+        if jid not in _JOBS:
+            sys.stderr.write(f"no such job: {args[0]}\n")
+            return None
+        return jid
+    return max(_JOBS.keys())
+
 
 
 def builtin_type(user_inputs):
@@ -301,6 +381,9 @@ builtin_functions = {
     "unalias": builtin_unalias,
     "source": builtin_source,
     ".": builtin_source,
+    "jobs": builtin_jobs,
+    "fg": builtin_fg,
+    "bg": builtin_bg,
 }
 #builtins 
 
@@ -399,6 +482,7 @@ def parse_line(line):
     else:
         chain_splits.append((current_op, current))
 
+
     def parse_pipeline(chain_tokens):
         segments_raw = []
         current = []
@@ -438,7 +522,18 @@ def parse_line(line):
 
         return segments
 
-    return [(op, parse_pipeline(chain)) for op, chain in chain_splits]
+    background = False
+    if chain_splits:
+        last_op, last_chain = chain_splits[-1]
+        if last_chain and last_chain[-1] == "&":
+            background = True
+            last_chain = last_chain[:-1]
+            if not last_chain:
+                raise ParseError("syntax error: empty command before &")
+            chain_splits[-1] = (last_op, last_chain)
+
+    chains = [(op, parse_pipeline(chain)) for op, chain in chain_splits]
+    return chains, background
 #parsing
 
 
@@ -638,8 +733,36 @@ def execute_pipeline(segments):
     return last_code
 
 
-def execute(chains):
+def execute(chains, background: bool = False):
     global _LAST_EXIT_CODE
+
+    if background:
+        cmd_string = " ".join(
+            " | ".join(" ".join(tokens) for tokens, _ in segments)
+            for _, segments in chains
+        ) + " &"
+
+        _, segments = chains[0]
+        tokens, redirects = segments[0] if len(segments) == 1 else segments[-1]
+        cmd = tokens[0]
+        args = tokens[1:]
+        path = shutil.which(cmd)
+        if not path:
+            sys.stderr.write(f"{cmd}: command not found\n")
+            return
+        try:
+            proc = subprocess.Popen(
+                [cmd] + args,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                errors="replace",
+            )
+            jid = register_job(proc, cmd_string)
+            sys.stdout.write(f"[{jid}] {proc.pid}\n")
+            _LAST_EXIT_CODE = 0
+        except Exception as e:
+            sys.stderr.write(f"{cmd}: {e}\n")
+        return
 
     for op, segments in chains:
         if op == "&&" and _LAST_EXIT_CODE != 0:
@@ -691,6 +814,7 @@ def run_cli():
     setup_history()
 
     while True:
+        reap_jobs()
         try:
             user_inputs = input(build_prompt()) 
         except EOFError:
@@ -712,12 +836,12 @@ def run_cli():
             readline.add_history(user_inputs)
 
         try:
-            segments = parse_line(user_inputs)
+            chains, background = parse_line(user_inputs)
         except ParseError as e:
             sys.stderr.write(f"parse error: {e}\n")
             continue
 
-        execute(segments)
+        execute(chains, background)
 #main loop 
 
 
