@@ -2,7 +2,6 @@
 
 
 
-
 #GLOBALS
 HISTORY_FILE = os.environ.get("HISTFILE", os.path.expanduser("~/.my_shell_history"))
 HISTORY_MAX = 1000 #TUTULACAK MAX HISTORY SAYISI
@@ -11,6 +10,7 @@ _LAST_EXIT_CODE = 0
 _SESSION_HISTORY_START = 0
 _LAST_APPENDED = 0
 _SHELL_VARS: dict[str, str] = {}
+_ALIASES: dict[str, str] = {}
 
 
 def setup_history():
@@ -205,6 +205,60 @@ def builtin_unset(args):
         os.environ.pop(name, None)
 
 
+def builtin_alias(args):
+    if not args:
+        for name, cmd in sorted(_ALIASES.items()):
+            sys.stdout.write(f"alias {name}='{cmd}'\n")
+        return
+    for arg in args:
+        if "=" in arg:
+            name, _, cmd = arg.partition("=")
+            _ALIASES[name.strip()] = cmd.strip("'\"")
+        else:
+            if arg in _ALIASES:
+                sys.stdout.write(f"alias {arg}='{_ALIASES[arg]}'\n")
+            else:
+                sys.stderr.write(f"alias: {arg}: not found\n")
+
+
+def builtin_unalias(args):
+    if not args:
+        sys.stderr.write("unalias: usage: unalias name [name ...]\n")
+        return
+    for name in args:
+        if name not in _ALIASES:
+            sys.stderr.write(f"unalias: {name}: not found\n")
+        else:
+            _ALIASES.pop(name)
+
+
+def builtin_source(args):
+    if not args:
+        sys.stderr.write("source: usage: source <file>\n")
+        return
+
+    path = os.path.expanduser(args[0])
+    if not os.path.isfile(path):
+        sys.stderr.write(f"source: {path}: No such file\n")
+        return
+
+    try:
+        with open(path, encoding = "utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                line = line.replace("$?", str(_LAST_EXIT_CODE))
+                line = expand_variables(line)
+                try:
+                    chains = parse_line(line)
+                    execute(chains)
+                except ParseError as e:
+                    sys.stderr.write(f"source: parse error in {path}: {e}\n")
+    except OSError as e:
+        sys.stderr.write(f"source: {e}\n")
+
+
 def builtin_type(user_inputs):
     for user_input in user_inputs:
         if user_input in builtin_functions:
@@ -224,6 +278,10 @@ builtin_functions = {
     "history": builtin_history,
     "export": builtin_export,
     "unset": builtin_unset,
+    "alias": builtin_alias,
+    "unalias": builtin_unalias,
+    "source": builtin_source,
+    ".": builtin_source,
 }
 #builtins 
 
@@ -580,6 +638,12 @@ def execute_single(tokens, redirects):
         return 0
 
     cmd, args = tokens[0], tokens[1:]
+
+    if cmd in _ALIASES and cmd not in _ALIASES.get(_ALIASES[cmd].split()[0], {}):
+        expanded = shlex.split(_ALIASES[cmd]) + args
+        cmd = expanded[0]
+        args = expanded[1:]
+
     if cmd in builtin_functions:
         execute_builtin(cmd, args, redirects)
         return 0
@@ -588,6 +652,12 @@ def execute_single(tokens, redirects):
 #execution 
 
 
+def build_prompt() -> str:
+    cwd = os.getcwd()
+    home = os.path.expanduser("~")
+    if cwd.startswith(home):
+        cmd = "~" + cwd[len(home):]
+    return f"{cmd} $ "
 
 #main loop
 def run_cli():
@@ -595,7 +665,7 @@ def run_cli():
 
     while True:
         try:
-            user_inputs = input("$ ") 
+            user_inputs = input(build_prompt()) 
         except EOFError:
             sys.stdout.write("\n")
             break
