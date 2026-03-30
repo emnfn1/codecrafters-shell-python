@@ -1,8 +1,5 @@
 ﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit, re
 
-from numpy import std
-
-
 
 #GLOBALS
 HISTORY_FILE = os.environ.get("HISTFILE", os.path.expanduser("~/.my_shell_history"))
