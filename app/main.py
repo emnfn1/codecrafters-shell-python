@@ -1,4 +1,6 @@
-﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit
+﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit, re
+
+from altair import value
 
 
 
@@ -9,6 +11,7 @@ HISTORY_EXIT_MODE = "write"
 _LAST_EXIT_CODE = 0
 _SESSION_HISTORY_START = 0
 _LAST_APPENDED = 0
+_SHELL_VARS: dict[str, str] = {}
 
 
 def setup_history():
@@ -95,6 +98,17 @@ def get_executables_cached():
         _PATH_EXECUTABLES = get_path_executables()
         _PATH_EXECUTABLES_TIMESTAMP = time.time()
     return _PATH_EXECUTABLES
+
+def expand_variables(tokens: str) -> str:
+    def lookup(match):
+        name = match.group(1) or match.group(2)
+        if name in _SHELL_VARS:
+            return _SHELL_VARS[name]
+        return os.environ.get(name, "")
+
+    token = re.sub(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}', lookup, token)
+    token = re.sub(r'\$([A-Za-z_][A-Za-z0-9_]*)', lookup, token)
+    return token
 #executable cache
 
 
@@ -168,6 +182,30 @@ def cd_function(user_inputs):
         os.chdir(target)
 
 
+def builtin_export(args):
+    if not args:
+        for key, val in sorted(os.environ.items()):
+            sys.stdout.write(f"declare -x {key}={val!r}\n")
+        return
+
+    for arg in args:
+        if "=" in arg:
+            name, _, value = arg.partition("=")
+            _SHELL_VARS[name] = value
+            os.environ[name] = value
+        else:
+            if arg in _SHELL_VARS:
+                os.environ[arg] = _SHELL_VARS[arg]
+            elif arg not in os.environ:
+                sys.stderr.write(f"export: {arg}: not found\n")
+
+
+def builtin_unset(args):
+    for name in args:
+        _SHELL_VARS.pop(name, None)
+        os.environ.pop(name, None)
+
+
 def builtin_type(user_inputs):
     for user_input in user_inputs:
         if user_input in builtin_functions:
@@ -185,6 +223,8 @@ builtin_functions = {
     "pwd": lambda user_inputs: sys.stdout.write(f"{os.getcwd()}\n"),
     "cd": cd_function,
     "history": builtin_history,
+    "export": builtin_export,
+    "unset": builtin_unset,
 }
 #builtins 
 
@@ -535,6 +575,11 @@ def execute(chains):
 def execute_single(tokens, redirects):
     if not tokens:
         return 0
+    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*=.*', tokens[0]) and len(tokens) == 1:
+        name, _, value = tokens[0].partition("=")
+        _SHELL_VARS[name] = value
+        return 0
+
     cmd, args = tokens[0], tokens[1:]
     if cmd in builtin_functions:
         execute_builtin(cmd, args, redirects)
@@ -563,6 +608,7 @@ def run_cli():
             continue
 
         user_inputs = user_inputs.replace("$?", str(_LAST_EXIT_CODE))
+        user_inputs = expand_variables(user_inputs)
 
         last = readline.get_history_item(readline.get_current_history_length())
         if user_inputs != last:
