@@ -653,11 +653,14 @@ def execute_single(tokens, redirects):
 
 
 def build_prompt() -> str:
-    cwd = os.getcwd()
-    home = os.path.expanduser("~")
-    if cwd.startswith(home):
-        cwd = "~" + cwd[len(home):]
-    return f"{cwd} $ "
+    ps1 = os.environ.get("PS1") or _SHELL_VARS.get("PS1")
+    if ps1:
+        cwd = os.getcwd()
+        home = os.path.expanduser("~")
+        if cwd.startswith(home):
+            cwd = "~" + cwd[len(home):]
+        return ps1.replace("r\w", cwd).replace("r\W", os.path.basename(cwd))
+    return "$ "
 
 #main loop
 def run_cli():
