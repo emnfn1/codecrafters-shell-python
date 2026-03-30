@@ -826,7 +826,7 @@ def execute_single(tokens, redirects):
 
 #Prompt
 def build_prompt() -> str:
-    """
+    r"""
     Builds the shell prompt.
     Uses PS1 if set (supporting \w and \W for current directory), otherwise defaults to "$ ".)
     Set PS1='\\w $ ' in ~/.myshellrc for a dynamic cwd prompt.
