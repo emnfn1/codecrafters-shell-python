@@ -659,7 +659,7 @@ def build_prompt() -> str:
         home = os.path.expanduser("~")
         if cwd.startswith(home):
             cwd = "~" + cwd[len(home):]
-        return ps1.replace("r\w", cwd).replace("r\W", os.path.basename(cwd))
+        return ps1.replace(r"\w", cwd).replace(r"\W", os.path.basename(cwd))
     return "$ "
 
 #main loop
