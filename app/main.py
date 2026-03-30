@@ -1,6 +1,5 @@
 ﻿import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit, re
 
-from altair import value
 
 
 
