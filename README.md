@@ -35,13 +35,6 @@ A Unix shell written in Python. Built from scratch as a learning project. I star
 `cd`, `echo`, `pwd`, `type`, `exit`, `history`, `export`, `unset`,
 `alias`, `unalias`, `source`, `.`, `jobs`, `fg`, `bg`
 
-## Limitations
-
-- No scripting (`if`/`for`/`while`/functions)
-- No here-docs (`<<EOF`)
-- No arithmetic expansion (`$(( ))`)
-- No arrays
-- Job control (`fg`/`bg`) works on Linux/macOS only
 
 ## History
 
