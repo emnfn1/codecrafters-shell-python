@@ -20,21 +20,35 @@ A Unix shell written in Python. Built from scratch as a learning project. I star
 - **Pipelines** — `cmd1 | cmd2 | cmd3`
 - **Redirections** — `>`, `>>`, `2>`, `2>>`, `<`
 - **Logical operators** — `&&`, `||`, `;`
-- **Background jobs** — `cmd &`, `jobs`, `fg`, `bg`
+- **Background jobs** — `cmd &`, `jobs`, `fg`, `bg` (thread-based execution, no double-run)
 - **Variables** — `name=value`, `$VAR`, `${VAR}`, `export`, `unset`
-- **Command substitution** — `echo "today is $(date)"`
+- **Command substitution** — `echo "today is $(date)"`, nested `$(...)` and quoted `"$(...)"` support
 - **Tab completion** — commands and file paths
 - **History** — persistent across sessions, `history`, `history -r/-w/-a`
-- **Aliases** — `alias ll="ls -la"`, `unalias`
-- **Source** — `source ~/.myshellrc` or `. ~/.myshellrc`
+- **Aliases** — `alias ll="ls -la"`, `unalias` (expanded in command substitution)
+- **Source** — `source ~/.myshellrc` or `. ~/.myshellrc` (symlink-safe path validation)
 - **Dynamic prompt** — configure via `PS1`
 - **Exit codes** — `$?` after every command
+
+## Security
+
+- **Command injection prevention** — command substitution uses `parse_line` + `execute` instead of `shell=True`
+- **Symlink-safe `source`** — uses `os.path.realpath` + `os.path.commonpath` to prevent directory traversal
+- **Hardened `shell_quote`** — excludes dangerous characters (backticks, `$`, `!`, braces, etc.) from safe display
+- **Thread-safe exit codes** — background jobs use a lock to prevent race conditions on `$?`
 
 ## Builtins
 
 `cd`, `echo`, `pwd`, `type`, `exit`, `history`, `export`, `unset`,
 `alias`, `unalias`, `source`, `.`, `jobs`, `fg`, `bg`
 
+## Recent Improvements
+
+- Fixed command substitution to properly handle nested `$(...)` and double-quoted `"$(...)"` contexts
+- Background pipelines now execute via threads (no dummy subprocess, no double-execution)
+- Alias expansion now works inside command substitution
+- Job cleanup fixed — completed background jobs are removed from the job table
+- Security hardening across command substitution, `source`, and job display
 
 ## History
 
@@ -42,6 +56,7 @@ History is stored in `~/.myshell_history` by default.
 Override with the `HISTFILE` environment variable:
 ```bash
 HISTFILE=~/my_history myshell
+```
 
 | Command | Effect |
 |---|---|
