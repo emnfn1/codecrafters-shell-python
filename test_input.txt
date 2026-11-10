@@ -1,2 +1,0 @@
-echo hello > test.txt
-cat test.txt
