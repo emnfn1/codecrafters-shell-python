@@ -1,6 +1,6 @@
 ﻿#!/usr/bin/env python3
 # First line is called Shebang, tells Unix-like systems to execute this file with python3
-import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit, re, signal
+import sys, shutil, os, subprocess, shlex, readline, glob, time, io, atexit, re, signal, threading
 
 try:
     # attempts to import readline. 
@@ -26,6 +26,8 @@ _LAST_EXIT_CODE = 0 # when program finishes,
     # its exit code is stored here for use in $?. 
     # 0 means success, nonzero means error.
 
+# Thread lock for _LAST_EXIT_CODE to prevent race conditions in background jobs
+_EXIT_CODE_LOCK = threading.Lock()
 # load all your past commands from history file
 _SESSION_HISTORY_START = 0
 _LAST_APPENDED = 0 # remembers how many commands were in history
@@ -207,25 +209,118 @@ def expand_variables(token: str) -> str:
 
 # we handle $(command) substitution with this function
 def expand_command_substitution(line: str) -> str:
-    def run_substitution(match):
+    def run_substitution(inner: str) -> str:
         # this grabs whatever text is inside the $(...)
-        inner = match.group(1).strip()
+        inner = inner.strip()
         if not inner:
             return ""
         try:
-            result = subprocess.run(
-                inner,
-                shell=True, # we tell computer to run the command in a shell,
-                capture_output=True, # we capture the output of the command
-                text=True, # and save it as pure text in result.stdout
-                errors="replace",
-                )
-            return result.stdout.rstrip("\n")
-        except Exception:
+            # First expand variables and aliases in the inner command
+            inner = expand_variables(inner)
+            # Expand aliases in the command substitution
+            inner = expand_aliases(inner)
+            # Recursively expand nested command substitutions
+            inner = expand_command_substitution(inner)
+
+            # Use our existing parse_line to properly handle shell syntax
+            # This allows pipelines, logical operators, etc. while avoiding shell=True
+            chains, background = parse_line(inner)
+
+            # Execute the parsed chains and capture output
+            # We need to capture stdout, so we redirect it
+            import io
+            old_stdout = sys.stdout
+            old_stderr = sys.stderr
+            stdout_capture = io.StringIO()
+            stderr_capture = io.StringIO()
+            sys.stdout = stdout_capture
+            sys.stderr = stderr_capture
+
+            try:
+                # Execute with no background for command substitution
+                execute(chains, background=False)
+            finally:
+                sys.stdout = old_stdout
+                sys.stderr = old_stderr
+
+            return stdout_capture.getvalue().rstrip("\n")
+        except ParseError as e:
+            sys.stderr.write(f"command substitution: parse error: {e}\n")
             return ""
-    # we use regex to find all $(...) pattens, 
-    # and send them to the run_substitution function
-    return re.sub(r'\$\((.+?)\)', run_substitution, line)
+        except Exception as e:
+            sys.stderr.write(f"command substitution: {e}\n")
+            return ""
+
+    # Expand aliases in a line (used for command substitution)
+    def expand_aliases(text: str) -> str:
+        """Expand aliases in a command string."""
+        try:
+            tokens = shlex.split(text, posix=True)
+        except ValueError:
+            return text
+        if not tokens:
+            return text
+        # Expand first token if it's an alias
+        if tokens[0] in _ALIASES:
+            expanded = shlex.split(_ALIASES[tokens[0]]) + tokens[1:]
+            return " ".join(expanded)
+        return text
+
+    # we use a state machine to find all $(...) patterns with proper nesting
+    # and quote handling instead of regex which can't handle nested parentheses
+    def find_command_substitutions(text: str):
+        """Find all $(...) with proper nesting and quote handling."""
+        result = []
+        i = 0
+        in_single_quote = False
+        in_double_quote = False
+        while i < len(text):
+            # Handle quote state
+            if text[i] == "'" and not in_double_quote:
+                in_single_quote = not in_single_quote
+            elif text[i] == '"' and not in_single_quote:
+                in_double_quote = not in_double_quote
+            # Look for $( outside single quotes (works in double quotes and unquoted)
+            if not in_single_quote and i + 1 < len(text) and text[i] == '$' and text[i + 1] == '(':
+                start = i
+                i += 2  # Skip $(
+                depth = 1
+                # Use local quote state for parsing inside the substitution
+                local_single_quote = False
+                local_double_quote = False
+                while i < len(text) and depth > 0:
+                    # Handle quotes inside substitution
+                    if text[i] == "'" and not local_double_quote:
+                        local_single_quote = not local_single_quote
+                    elif text[i] == '"' and not local_single_quote:
+                        local_double_quote = not local_double_quote
+                    elif not local_single_quote and not local_double_quote:
+                        if text[i] == '(':
+                            depth += 1
+                        elif text[i] == ')':
+                            depth -= 1
+                    i += 1
+                if depth == 0:
+                    # Found matching closing parenthesis
+                    # Content is between start+2 and i-1
+                    inner = text[start + 2:i - 1]
+                    result.append((start, i, inner))
+                else:
+                    # Unmatched parentheses, skip
+                    pass
+                continue
+            i += 1
+        return result
+
+    # Process substitutions from right to left to maintain correct indices
+    # This naturally handles nested substitutions (inner ones processed first)
+    substitutions = find_command_substitutions(line)
+    result = line
+    for start, end, inner in reversed(substitutions):
+        replacement = run_substitution(inner)
+        result = result[:start] + replacement + result[end:]
+
+    return result
 
 
 # this function is called right after we send a job to the background
@@ -250,16 +345,16 @@ def register_job(proc, cmd_string: str) -> int:
 def reap_jobs():
     # we loop through all the jobs in _JOBS
     for jid, job in list(_JOBS.items()):
-        # we filter the "running" jobs and 
+        # we filter the "running" jobs and
         # check if their process has finished by calling poll()
         if job["status"] == "running" and job["proc"].poll() is not None:
             job["status"] = "done" #we update the job status to "done"
             # we print a message to the user that the job has finished
             sys.stdout.write(f"\n[{jid}] Done    {job['cmd']}\n")
+            # Remove completed jobs from the job list
+            del _JOBS[jid]
 
 
-
- 
 #Builtins
 # this function called when user runs the "history" command.
 def builtin_history(args):
@@ -435,9 +530,30 @@ def builtin_source(args):
         sys.stderr.write(f"source: {path}: No such file\n")
         return
 
+    # Security: only allow sourcing from trusted locations
+    # Resolve symlinks and check if file is in user's home, /etc, or current working directory
+    # Use os.path.commonpath to prevent symlink bypass
+    try:
+        real_path = os.path.realpath(path)
+        home = os.path.realpath(os.path.expanduser("~"))
+        cwd = os.path.realpath(os.getcwd())
+        allowed_dirs = [home, "/etc", cwd]
+        # Check if real_path is under any allowed directory using commonpath
+        def is_subpath(child, parent):
+            try:
+                return os.path.commonpath([child, parent]) == parent
+            except ValueError:
+                return False
+        if not any(is_subpath(real_path, d) for d in allowed_dirs):
+            sys.stderr.write(f"source: {path}: not in allowed directory\n")
+            return
+    except OSError:
+        sys.stderr.write(f"source: {path}: cannot resolve path\n")
+        return
+
     try:
         # we open the file and read it line by line,
-        with open(path, encoding = "utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 # if line is empty or starts with #, we skip it
@@ -465,13 +581,16 @@ def builtin_jobs(args):
     if not _JOBS:
         return
     # we loop through the jobs sorted by their job ID
-    for jid, job in sorted(_JOBS.items()):
+    for jid, job in list(sorted(_JOBS.items())):
         # we check if the process is still running by calling poll(),
         status = "Running" if job["proc"].poll() is None else "Done"
         # we update the job status in case it has changed since last check
         job["status"] = status.lower()
         # we print the job ID, status, and command for each job
         sys.stdout.write(f"[{jid}] {status}    {job['cmd']}\n")
+        # Remove completed jobs
+        if status == "Done":
+            del _JOBS[jid]
 
 
 # this function is called when user runs "fg" 
@@ -1037,34 +1156,87 @@ def execute(chains, background: bool = False):
     # we save the entire command string for the background job,
     # so we can show it to the user later when they type "jobs"
     if background:
+        def shell_quote(s: str) -> str:
+            """Quote a string for safe shell display."""
+            if not s:
+                return "''"
+            # If the string contains no special characters, return as-is
+            # Allow common safe characters: alphanumeric, _, ., /, =, -, :, @, ,, %, +, ~
+            # Exclude dangerous: backticks, $, !, {, }, (, ), [, ], *, ?, |, &, ;, <, >, ', ", \
+            if re.fullmatch(r'[A-Za-z0-9_./=:@,%+\-~]+', s):
+                return s
+            # Otherwise, single-quote and escape any single quotes
+            return "'" + s.replace("'", "'\\''") + "'"
+
         cmd_string = " ".join(
-            " | ".join(" ".join(tokens) for tokens, _ in segments)
+            " | ".join(" ".join(shell_quote(token) for token in tokens) for tokens, _ in segments)
             for _, segments in chains
         ) + " &"
 
-        # its grabs the command and checks if it exists
-        _, segments = chains[0]
-        tokens, redirects = segments[0] if len(segments) == 1 else segments[-1]
-        cmd = tokens[0]
-        args = tokens[1:]
-        path = shutil.which(cmd)
-        if not path:
-            sys.stderr.write(f"{cmd}: command not found\n")
-            return
-        try:
-            # we launch the program without waiting for it to finish
-            proc = subprocess.Popen(
-                [cmd] + args,
-                stdin=subprocess.DEVNULL,#block program from reading input
-                text=True,
-                errors="replace",
-            )
-            # we hand the process to the job manager
-            jid = register_job(proc, cmd_string)
-            sys.stdout.write(f"[{jid}] {proc.pid}\n")
+        # For background jobs, we execute the full chain in a thread to avoid blocking
+        import threading
+
+        def run_background_chain():
+            global _LAST_EXIT_CODE
+            try:
+                # Execute the full chain logic for background
+                for op, segments in chains:
+                    with _EXIT_CODE_LOCK:
+                        last_code = _LAST_EXIT_CODE
+                    if op == "&&" and last_code != 0:
+                        continue
+                    if op == "||" and last_code == 0:
+                        continue
+                    if len(segments) == 1:
+                        tokens, redirects = segments[0]
+                        code = execute_single(tokens, redirects)
+                    else:
+                        code = execute_pipeline(segments)
+                    with _EXIT_CODE_LOCK:
+                        _LAST_EXIT_CODE = code
+            except Exception as e:
+                sys.stderr.write(f"background job error: {e}\n")
+
+        thread = threading.Thread(target=run_background_chain, daemon=True)
+        thread.start()
+
+        # Create a mock process object for job tracking that wraps the thread
+        class ThreadProcess:
+            def __init__(self, thread, cmd_str):
+                self.thread = thread
+                self._cmd = cmd_str
+                self._pid = None
+                self._returncode = None
+                self._finished = False
+
+            def poll(self):
+                if self.thread.is_alive():
+                    return None
+                if not self._finished:
+                    # Thread finished, capture return code
+                    self.thread.join()
+                    self._finished = True
+                    self._returncode = 0  # Background threads return 0 on success
+                return self._returncode
+
+            def wait(self):
+                self.thread.join()
+                self._finished = True
+                self._returncode = 0
+                return self._returncode
+
+            @property
+            def pid(self):
+                # Return thread ident as pseudo-PID
+                return self.thread.ident or 0
+
+        # We need to track the thread's completion to update the job
+        # For now, use a wrapper that polls the thread
+        wrapper = ThreadProcess(thread, cmd_string)
+        jid = register_job(wrapper, cmd_string)
+        sys.stdout.write(f"[{jid}] {wrapper.pid}\n")
+        with _EXIT_CODE_LOCK:
             _LAST_EXIT_CODE = 0
-        except Exception as e:
-            sys.stderr.write(f"{cmd}: {e}\n")
         return
 
     # we loop through each chain
@@ -1100,10 +1272,14 @@ def execute_single(tokens, redirects):
     # we check if the command is an alias and 
     # we use a safety feature to prevent infinite loop 
     # in case of circular alias definitions
-    if cmd in _ALIASES and cmd not in _ALIASES.get(_ALIASES[cmd].split()[0], {}):
-        expanded = shlex.split(_ALIASES[cmd]) + args
-        cmd = expanded[0]
-        args = expanded[1:]
+    if cmd in _ALIASES:
+        # Check for circular aliases: if the alias expands to a command
+        # that would expand back to this alias, skip expansion
+        expanded_cmd = _ALIASES[cmd].split()[0] if _ALIASES[cmd] else ""
+        if expanded_cmd != cmd and expanded_cmd not in _ALIASES:
+            expanded = shlex.split(_ALIASES[cmd]) + args
+            cmd = expanded[0]
+            args = expanded[1:]
 
     # lastly we check if the command is a builtin, 
     # if yes we execute it with execute_builtin,

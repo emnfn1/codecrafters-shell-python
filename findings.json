@@ -1,0 +1,62 @@
+[
+  {
+    "file": "app/main.py",
+    "line": 219,
+    "summary": "Recursive call to expand_command_substitution after variable expansion causes infinite recursion on nested substitutions",
+    "failure_scenario": "User runs 'echo $(echo $(echo test))' - inner substitution expands, then outer call re-expands it, recursing infinitely until stack overflow"
+  },
+  {
+    "file": "app/main.py",
+    "line": 252,
+    "summary": "find_command_substitutions state machine doesn't handle quoted or escaped parentheses",
+    "failure_scenario": "User runs 'echo $(echo \"hello (world)\")' - the ')' in quotes prematurely closes the substitution, causing incorrect parsing and wrong output"
+  },
+  {
+    "file": "app/main.py",
+    "line": 1161,
+    "summary": "Background pipeline creates dummy process that executes first command again, running it twice",
+    "failure_scenario": "User runs 'sleep 10 | cat &' - sleep 10 runs once in background thread and again as dummy process for PID tracking, wasting resources and causing double side effects"
+  },
+  {
+    "file": "app/main.py",
+    "line": 1138,
+    "summary": "Background thread modifies global _LAST_EXIT_CODE while main thread continues, causing race condition on $?",
+    "failure_scenario": "User runs 'sleep 1 &; echo $?' - $? may show background job's exit code instead of 0 because background thread overwrites _LAST_EXIT_CODE after main thread reads it"
+  },
+  {
+    "file": "app/main.py",
+    "line": 504,
+    "summary": "builtin_source security check uses startswith which is bypassable via symlinks and directory traversal",
+    "failure_scenario": "User runs 'cd /tmp; ln -s /etc/passwd myshellrc; source myshellrc' - realpath resolves to /etc/passwd which starts with /home/user (if cwd is /home/user), bypassing the allowed directory check"
+  },
+  {
+    "file": "app/main.py",
+    "line": 223,
+    "summary": "Command substitution uses parse_line instead of shell=True, losing shell features like globbing and brace expansion",
+    "failure_scenario": "User runs 'echo $(echo *.txt)' - globbing no longer expands in command substitution, outputting literal '*.txt' instead of matching files"
+  },
+  {
+    "file": "app/main.py",
+    "line": 1138,
+    "summary": "Background thread calls execute_pipeline which uses subprocess.Popen pipes, sharing global state with main thread causing corruption",
+    "failure_scenario": "User runs 'sleep 5 | cat &' then immediately runs 'echo hello' - output may interleave, pipes may break, or file descriptors may conflict between threads"
+  },
+  {
+    "file": "app/main.py",
+    "line": 1119,
+    "summary": "shell_quote regex allows dangerous characters (backticks, $, !, ^) to pass through unquoted",
+    "failure_scenario": "Job command containing backticks displays unquoted in 'jobs' output, misleading user about actual command that was run"
+  },
+  {
+    "file": "app/main.py",
+    "line": 223,
+    "summary": "Aliases not expanded in command substitution because parse_line doesn't expand them before execution",
+    "failure_scenario": "User defines 'alias ll=\"ls -l\"' then runs 'echo $(ll)' - alias not expanded, command substitution fails with 'll: command not found'"
+  },
+  {
+    "file": "app/main.py",
+    "line": 1141,
+    "summary": "run_background_pipeline duplicates chain execution logic (&&/|| handling, pipeline execution) instead of calling execute()",
+    "failure_scenario": "Bug fixes to execute() for logical operators or pipelines won't apply to background jobs, causing inconsistent behavior between foreground and background execution"
+  }
+]
